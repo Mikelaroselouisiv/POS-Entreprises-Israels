@@ -265,6 +265,119 @@ select {
   gap: 0.5rem;
 }
 
+.app-update-btn {
+  position: relative;
+  justify-content: center;
+  width: 100%;
+  font-size: 0.82rem;
+}
+
+.app-update-btn--hot {
+  border-color: var(--ei-accent);
+  color: var(--ei-accent);
+  font-weight: 650;
+}
+
+.app-update-dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  background: var(--ei-accent);
+  vertical-align: middle;
+}
+
+.app-update-backdrop {
+  z-index: 80;
+}
+
+.app-update-modal {
+  width: min(440px, calc(100vw - 2rem));
+  max-height: min(90vh, 640px);
+  overflow: auto;
+}
+
+.app-update-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 0.15rem 0.25rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.app-update-meta {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--ei-text-muted);
+}
+
+.app-update-banner {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: var(--ei-primary-soft);
+  color: var(--ei-text);
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.app-update-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.86rem;
+}
+
+.app-update-progress-wrap {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.app-update-progress-label {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.app-update-progress-track {
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--ei-border);
+  overflow: hidden;
+}
+
+.app-update-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ei-primary);
+  transition: width 0.2s ease;
+}
+
+.app-update-actions {
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.app-update-snooze {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--ei-border);
+}
+
+.app-update-snooze-label {
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--ei-text-muted);
+}
+
+.app-update-snooze-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .app-user {
   display: grid;
   gap: 0.15rem;

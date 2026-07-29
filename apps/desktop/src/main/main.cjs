@@ -114,9 +114,8 @@ app.whenReady().then(async () => {
 
   createWindow();
 
-  if (!isDev && getAppEdition() === 'remote') {
-    initUpdater();
-  }
+  // Mises à jour Remote + Server (GCS) — IPC toujours enregistré ; actif seulement en build packagé.
+  initUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

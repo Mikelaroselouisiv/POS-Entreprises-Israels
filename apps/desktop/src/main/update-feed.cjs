@@ -1,4 +1,4 @@
-/** URL publique GCS pour electron-updater (édition Remote uniquement). */
+/** URL publique GCS pour electron-updater (Remote + Server). */
 const GCS_BUCKET = 'pos-entrprise-israel-assets';
 
 const UPDATE_FEEDS = {

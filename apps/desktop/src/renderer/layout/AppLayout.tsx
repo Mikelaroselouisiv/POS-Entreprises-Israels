@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { AppUpdateControls } from '../components/AppUpdateControls';
 import { BrandLogo } from '../components/BrandLogo';
 import { BRAND_NAME } from '../config/brand';
 import { useAuth } from '../context/AuthContext';
@@ -103,6 +104,7 @@ export function AppLayout() {
             <div className="app-user-email">{user?.phone}</div>
             <div className="app-user-role">{formatRoleLabel(user?.role, user?.roleLabel)}</div>
           </div>
+          <AppUpdateControls />
           <button
             type="button"
             className="btn btn-ghost"
