@@ -13,6 +13,8 @@ export type CartLine = {
   quantity: number;
   /** Facteur stock (1 = 1 unité vendue = 1 unité de stock) */
   unitsPerPackage: number;
+  /** Prix unitaire saisi (vente spéciale) — null = non renseigné */
+  manualUnitPrice?: number | null;
 };
 
 export function defaultSaleUnit(p: Product): ProductSaleUnit | undefined {
@@ -42,6 +44,9 @@ export function clampQty(q: number, maxQ: number | undefined): number {
 }
 
 export function effectiveUnitPrice(product: Product | undefined, line: CartLine): number {
+  if (line.manualUnitPrice != null && Number.isFinite(line.manualUnitPrice)) {
+    return line.manualUnitPrice;
+  }
   if (!product) return 0;
   const su = product.saleUnits?.find((s) => s.id === line.productSaleUnitId);
   if (!su) return 0;
@@ -50,6 +55,13 @@ export function effectiveUnitPrice(product: Product | undefined, line: CartLine)
     unitPrice: Number(v.unitPrice),
   }));
   return resolveVolumeUnitPrice(Number(su.salePrice), tiers, line.quantity);
+}
+
+export function productSellable(product: Product): boolean {
+  const su = defaultSaleUnit(product);
+  if (!su) return false;
+  const maxQ = maxQtyInSaleUnit(product, Number(su.unitsPerPackage));
+  return maxQ === undefined || maxQ >= MIN_SALE_QTY;
 }
 
 export function addLineToCart(
@@ -90,6 +102,7 @@ export function addLineToCart(
         label,
         quantity: firstQty,
         unitsPerPackage: up,
+        manualUnitPrice: null,
       },
     ],
   };
@@ -109,4 +122,45 @@ export function bumpCartLine(
       return { ...l, quantity: clampQty(l.quantity + delta, maxQ) };
     })
     .filter((l) => l.quantity >= MIN_SALE_QTY);
+}
+
+export function setCartLineQty(
+  cart: CartLine[],
+  products: Product[],
+  productSaleUnitId: number,
+  rawQty: number,
+): CartLine[] {
+  return cart
+    .map((l) => {
+      if (l.productSaleUnitId !== productSaleUnitId) return l;
+      const p = products.find((x) => x.id === l.productId);
+      const maxQ = p ? maxQtyInSaleUnit(p, l.unitsPerPackage) : undefined;
+      return { ...l, quantity: clampQty(rawQty, maxQ) };
+    })
+    .filter((l) => l.quantity >= MIN_SALE_QTY);
+}
+
+export function setCartLineManualPrice(
+  cart: CartLine[],
+  productSaleUnitId: number,
+  raw: string,
+): CartLine[] {
+  const trimmed = raw.trim().replace(',', '.');
+  if (trimmed === '') {
+    return cart.map((l) =>
+      l.productSaleUnitId === productSaleUnitId ? { ...l, manualUnitPrice: null } : l,
+    );
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return cart;
+  return cart.map((l) =>
+    l.productSaleUnitId === productSaleUnitId ? { ...l, manualUnitPrice: parsed } : l,
+  );
+}
+
+export function specialPricesReady(cart: CartLine[]): boolean {
+  return (
+    cart.length > 0 &&
+    cart.every((l) => l.manualUnitPrice != null && Number.isFinite(l.manualUnitPrice))
+  );
 }

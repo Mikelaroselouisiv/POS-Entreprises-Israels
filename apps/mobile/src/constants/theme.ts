@@ -14,6 +14,9 @@ export const Colors = {
     backgroundElement: '#FFFFFF',
     backgroundSelected: '#FFF4E5',
     textSecondary: '#78716C',
+    primary: '#E67E00',
+    primarySoft: '#FFF4E5',
+    border: '#E6DDD2',
   },
   dark: {
     // Même palette claire : le POS Israel n'utilise pas le mode sombre.
@@ -22,6 +25,9 @@ export const Colors = {
     backgroundElement: '#FFFFFF',
     backgroundSelected: '#FFF4E5',
     textSecondary: '#78716C',
+    primary: '#E67E00',
+    primarySoft: '#FFF4E5',
+    border: '#E6DDD2',
   },
 } as const;
 

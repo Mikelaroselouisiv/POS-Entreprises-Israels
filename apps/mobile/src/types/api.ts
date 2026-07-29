@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STOCK_MANAGER' | 'ACCOUNTANT';
+export type UserRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'STOCK_MANAGER' | 'ACCOUNTANT' | 'LIVREUR';
 
 export interface SessionUser {
   id: number;
@@ -10,6 +10,14 @@ export interface SessionUser {
   companyId?: number | null;
   departmentId?: number | null;
   createdAt?: string;
+  permissions?: string[];
+}
+
+export interface UserAttribution {
+  id: number;
+  fullName?: string | null;
+  phone?: string | null;
+  email?: string | null;
 }
 
 export interface LoginResponse {
@@ -50,6 +58,7 @@ export interface Product {
   id: number;
   companyId?: number;
   name: string;
+  cardColor?: string | null;
   sku?: string | null;
   barcode?: string | null;
   description?: string | null;
@@ -66,10 +75,12 @@ export interface Product {
 export interface SaleItemPayload {
   productSaleUnitId: number;
   quantity: number;
+  /** Prix unitaire manuel (vente spéciale). */
+  unitPrice?: number;
 }
 
 export interface PaymentPayload {
-  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT';
+  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT' | 'CREDIT';
   amount: number;
   reference?: string;
 }
@@ -80,14 +91,151 @@ export interface CreateSalePayload {
   clientName?: string | null;
   /** UUID client pour idempotence (offline / rejeu). */
   clientUuid?: string;
+  registerId?: number;
+  /** Vente spéciale (prix manuels) — ADMIN / MANAGER. */
+  specialSale?: boolean;
+  /** Espèces / mixte tendus (vente classique). */
+  amountReceived?: number;
+}
+
+export interface InventoryCountSheetRow {
+  id: number;
+  name: string;
+  sku: string | null;
+  stock: number;
+  unitLabel: string;
+}
+
+export interface InventoryCountSheet {
+  generatedAt: string;
+  asOf?: string | null;
+  department: { id: number; name: string; company: { id: number; name: string } };
+  products: InventoryCountSheetRow[];
+}
+
+export type InventorySessionKind = 'OPENING' | 'CLOSING' | 'AD_HOC';
+export type InventorySessionStatus = 'DRAFT' | 'COMPLETED' | 'CANCELLED';
+
+export interface InventoryLineRow {
+  id: number;
+  productId: number;
+  systemQtyAtOpen: string | number;
+  countedQty: string | number | null;
+  note: string | null;
+  product: { id: number; name: string; sku?: string | null; stock?: string | number };
+}
+
+export interface InventorySessionListItem {
+  id: number;
+  departmentId: number;
+  kind?: InventorySessionKind;
+  status: InventorySessionStatus;
+  label: string | null;
+  note: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  department: { id: number; name: string; company: { id: number; name: string } };
+  createdBy?: UserAttribution | null;
+  completedBy?: UserAttribution | null;
+  cancelledBy?: UserAttribution | null;
+  _count: { lines: number };
+}
+
+export interface InventorySessionDetail extends Omit<InventorySessionListItem, '_count'> {
+  lines: InventoryLineRow[];
+}
+
+export interface GlobalStockSnapshotItem {
+  id: number;
+  name: string;
+  sku: string | null;
+  stock: number;
+  stockMin: number;
+  company: { id: number; name: string } | null;
+  department: { id: number; name: string } | null;
+  unitLabel: string;
+  lowStock: boolean;
+}
+
+export interface GlobalStockSnapshot {
+  generatedAt: string;
+  asOf?: string | null;
+  items: GlobalStockSnapshotItem[];
+}
+
+export interface RegisterListItem {
+  id: number;
+  code: string;
+  storeId: number;
+  departmentId?: number | null;
+  store: { id: number; name: string; companyId: number | null };
+  department?: { id: number; name: string } | null;
+}
+
+export interface RegisterInventoryLinePayload {
+  productId: number;
+  countedQty: number;
+}
+
+export interface RegisterSessionDetail {
+  id: number;
+  registerId: number;
+  departmentId: number;
+  status: 'OPEN' | 'CLOSED';
+  openedAt: string;
+  closedAt: string | null;
+  openingCashAmount: string | number | null;
+  closingCashExpected: string | number | null;
+  closingCashCounted: string | number | null;
+  cashVariance: string | number | null;
+  register: RegisterListItem;
+  department: { id: number; name: string; company: { id: number; name: string } };
+  openedBy?: UserAttribution | null;
+  closedBy?: UserAttribution | null;
+}
+
+export interface AuditLogRow {
+  id: number;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  metadata: unknown;
+  createdAt: string;
+  user: UserAttribution | null;
+}
+
+export interface RegisterClosingCashPreview {
+  openingCash: number;
+  salesCash: number;
+  expenses: number;
+  unsettledChange: number;
+  expected: number;
 }
 
 export interface SalePaymentRow {
   id?: number;
   amount: string | number;
-  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT';
+  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT' | 'CREDIT';
   reference?: string | null;
   createdAt?: string;
+}
+
+export interface SaleCashGapRow {
+  id: number;
+  clientName?: string | null;
+  cashier?: string | null;
+  createdAt: string;
+  total: number;
+  amountReceived: number;
+  amountPaid: number;
+  changeDue: number;
+  balanceDue: number;
+  kind: 'CHANGE_OWED' | 'BALANCE_OWED';
+}
+
+export interface SaleCashGaps {
+  changeOwed: SaleCashGapRow[];
+  balanceOwed: SaleCashGapRow[];
 }
 
 export interface Sale {
@@ -99,6 +247,12 @@ export interface Sale {
   createdAt: string;
   clientName?: string | null;
   cashier?: string | null;
+  amountPaid?: number | string;
+  amountReceived?: number | string;
+  changeDue?: number | string;
+  balanceDue?: number | string;
+  changeSettledAt?: string | null;
+  cashBalanceSettledAt?: string | null;
   userId?: number | null;
   user?: {
     id: number;
@@ -143,6 +297,117 @@ export interface DashboardSummaryReport {
   month: DashboardBalanceSnapshot;
 }
 
+export interface DashboardSalesByProductRow {
+  companyId?: number | null;
+  companyName?: string | null;
+  departmentId: number | null;
+  departmentName: string | null;
+  productId: number;
+  productName: string;
+  isService: boolean;
+  quantity: number;
+  totalSubtotal: number;
+}
+
+export interface FinanceEntry {
+  id: number;
+  type: 'INCOME' | 'EXPENSE';
+  amount: string | number;
+  description: string;
+  detail?: string | null;
+  createdAt: string;
+  user?: { id: number; fullName?: string | null; phone: string } | null;
+}
+
+export interface FinanceLedgerRow {
+  kind: 'PURCHASE' | 'SALE' | 'EXPENSE';
+  id: string;
+  occurredAt: string;
+  amount: number;
+  description: string;
+  detail?: string | null;
+  user: { id: number; fullName: string | null; phone: string } | null;
+}
+
+export interface StockMovementRow {
+  id: number;
+  productId: number;
+  quantity: string | number;
+  type: string;
+  reason: string | null;
+  createdAt: string;
+  product: { id: number; name: string };
+  createdBy?: { id: number; fullName?: string | null; phone?: string } | null;
+}
+
+export interface MarginAnalysisProductRow {
+  productId: number;
+  name: string;
+  sku: string | null;
+  departmentName: string | null;
+  quantity: number;
+  revenue: number;
+  cost: number;
+  margin: number;
+  marginPct: number | null;
+}
+
+export interface MarginAnalysisReport {
+  dateFrom: string;
+  dateTo: string;
+  revenue: number;
+  cost: number;
+  margin: number;
+  marginPct: number | null;
+  productsCount: number;
+  products: MarginAnalysisProductRow[];
+}
+
+export interface BankAccountRow {
+  id: number;
+  bankId: number;
+  companyId: number;
+  name: string;
+  accountNumber: string | null;
+  openingBalance: number;
+  balance: number;
+  isActive: boolean;
+  note: string | null;
+  bankName?: string;
+}
+
+export interface BankRow {
+  id: number;
+  companyId: number;
+  name: string;
+  note: string | null;
+  isActive: boolean;
+  accounts: BankAccountRow[];
+}
+
+export interface BankSummary {
+  banksCount: number;
+  accountsCount: number;
+  totalCapital: number;
+  accounts: BankAccountRow[];
+  byBank: Array<{ id: number; name: string; accountsCount: number; balance: number }>;
+}
+
+export interface BankTransactionRow {
+  id: number;
+  type: 'DEPOSIT' | 'WITHDRAWAL';
+  amount: number;
+  description: string;
+  reference: string | null;
+  occurredAt: string;
+  bankAccount: {
+    id: number;
+    name: string;
+    accountNumber?: string | null;
+    bank: { id: number; name: string };
+  };
+}
+
 /** Réglages ticket partagés par département (GET /company/printer). */
 export interface DepartmentPrinterSettings {
   id: number;
@@ -178,4 +443,223 @@ export interface InventoryAlertRow {
 export interface PaginatedResult<T> {
   items: T[];
   total: number;
+}
+
+export type DeliveryStatus = 'PENDING' | 'PARTIAL' | 'DELIVERED';
+
+export interface DeliveryItem {
+  id: number;
+  saleItemId: number;
+  quantityOrdered: number | string;
+  quantityDelivered: number | string;
+  saleItem?: {
+    id: number;
+    lineLabel?: string | null;
+    quantity?: number | string;
+    unitPrice?: number | string;
+    subtotal?: number | string;
+    product?: { id: number; name: string } | null;
+  } | null;
+}
+
+export interface Delivery {
+  id: number;
+  uuid: string;
+  saleId: number;
+  companyId: number;
+  departmentId?: number | null;
+  status: DeliveryStatus;
+  note?: string | null;
+  deliveredAt?: string | null;
+  createdAt: string;
+  company?: { id: number; name: string } | null;
+  department?: { id: number; name: string } | null;
+  deliveredBy?: {
+    id: number;
+    fullName?: string | null;
+    phone?: string | null;
+  } | null;
+  sale?: {
+    id: number;
+    total: number | string;
+    clientName?: string | null;
+    cashier?: string | null;
+    status: string;
+    createdAt: string;
+    user?: {
+      id: number;
+      fullName?: string | null;
+      phone?: string | null;
+    } | null;
+  } | null;
+  items?: DeliveryItem[];
+}
+
+export type CreditCustomerStatus = 'CLEAR' | 'PARTIAL' | 'OVERDUE' | 'AT_LIMIT' | 'BLOCKED';
+
+export interface CreditCustomerListItem {
+  id: number;
+  uuid: string;
+  companyId: number;
+  departmentId: number | null;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  note: string | null;
+  creditLimit: number;
+  isActive: boolean;
+  balance: number;
+  openSalesCount: number;
+  oldestUnpaidAt: string | null;
+  status: CreditCustomerStatus;
+  department?: { id: number; name: string } | null;
+  company?: { id: number; name: string } | null;
+  createdAt?: string;
+}
+
+export interface CreditCustomerDetail extends CreditCustomerListItem {
+  availableCredit: number;
+  sales: Array<{
+    id: number;
+    total: number;
+    amountPaid: number;
+    balanceDue: number;
+    createdAt: string;
+    clientName?: string | null;
+    items: Array<{
+      id: number;
+      quantity: number;
+      unitPrice: number;
+      subtotal: number;
+      lineLabel?: string | null;
+      product?: { id: number; name: string; sku?: string | null } | null;
+    }>;
+    delivery?: { id: number; status: string } | null;
+  }>;
+  repayments: Array<{
+    id: number;
+    amount: number;
+    method: string;
+    reference?: string | null;
+    note?: string | null;
+    saleId?: number | null;
+    createdAt: string;
+  }>;
+  timeline: Array<{
+    kind: 'SALE' | 'PAYMENT';
+    at: string;
+    label: string;
+    amount: number;
+  }>;
+}
+
+export interface CreditSummary {
+  customersTotal: number;
+  withDebt: number;
+  clear: number;
+  overdue: number;
+  totalReceivable: number;
+  topDebtors: CreditCustomerListItem[];
+}
+
+export interface CompanyListItem {
+  id: number;
+  name: string;
+  legalName?: string | null;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  taxId?: string | null;
+  currency?: string;
+  vatRatePercent?: string | number;
+  _count?: { products: number; users: number; departments: number };
+}
+
+export interface AppRoleRow {
+  id: number;
+  code: string;
+  label: string;
+  description: string | null;
+  permissions: string[];
+  isSystem: boolean;
+  isActive: boolean;
+}
+
+export interface PermissionDefinition {
+  code: string;
+  label: string;
+}
+
+export interface Department {
+  id: number;
+  companyId: number;
+  name: string;
+  description?: string | null;
+  company?: { id: number; name: string };
+}
+
+export type PurchaseOrderStatus = 'DRAFT' | 'ORDERED' | 'CLOSED' | 'CANCELLED';
+export type ReceptionStatus = 'pending' | 'partial' | 'complete';
+
+export interface PurchaseOrderLineProgress {
+  productId: number;
+  quantityOrdered: number;
+  quantityReceived: number;
+  quantityRemaining: number;
+}
+
+export interface PurchaseOrderListItem {
+  id: number;
+  companyId: number;
+  departmentId: number;
+  supplierName: string | null;
+  status: PurchaseOrderStatus;
+  reference: string | null;
+  createdAt: string;
+  department: { id: number; name: string };
+  receptionStatus?: ReceptionStatus;
+  lineProgress?: PurchaseOrderLineProgress[];
+  amountOrderedEst?: number;
+  amountReceived?: number;
+  amountPendingEst?: number;
+  orderedLinesMissingPrice?: number;
+  _count: { lines: number; goodsReceipts?: number };
+}
+
+export interface PurchaseOrdersAmountSummary {
+  companyId: number;
+  orderCount: number;
+  pendingCount: number;
+  partialCount: number;
+  completeCount: number;
+  ordersMissingPrice: number;
+  amountOrderedEst: number;
+  amountReceived: number;
+  amountPendingEst: number;
+}
+
+export interface PurchaseOrderLineDetail {
+  id: number;
+  productId: number;
+  quantityOrdered: number;
+  quantityReceived: number;
+  quantityRemaining: number;
+  unitPriceEst: number | null;
+  product: { id: number; name: string; sku?: string | null };
+}
+
+export interface PurchaseOrderDetail extends PurchaseOrderListItem {
+  lines: PurchaseOrderLineDetail[];
+  goodsReceipts?: Array<{
+    id: number;
+    receivedAt: string;
+    lines: Array<{
+      productId: number;
+      quantity: string | number;
+      unitCost: string | number;
+      product: { id: number; name: string };
+    }>;
+  }>;
 }

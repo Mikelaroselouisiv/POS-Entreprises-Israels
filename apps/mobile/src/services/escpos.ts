@@ -50,7 +50,7 @@ function formatDateTimePap(value: Date | string | number = new Date()): string {
 }
 
 function formatMoney(value: number | undefined): string {
-  return Number(value ?? 0).toFixed(2);
+  return `${Number(value ?? 0).toFixed(2)} HTG`;
 }
 
 function clipLine(text: unknown, lineWidth: number): string {

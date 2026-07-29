@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import type { BluetoothDevice } from 'react-native-bluetooth-classic';
 
+import { AppScrollView } from '@/components/AppScrollView';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -86,72 +87,72 @@ export default function PrinterSettingsScreen() {
   }
 
   return (
-    <Screen style={styles.container}>
-      {status && (
-        <ThemedView type="backgroundElement" style={styles.status}>
-          <ThemedText type="small">{status}</ThemedText>
-        </ThemedView>
-      )}
-
-      <View style={styles.section}>
-        <ThemedText type="smallBold">Imprimante actuelle</ThemedText>
-        <ThemedText themeColor="textSecondary">
-          {saved ? `${saved.name ?? 'Sans nom'} (${saved.address})` : 'Aucune imprimante configurée'}
-        </ThemedText>
-      </View>
-
-      <View style={styles.section}>
-        <ThemedText type="smallBold" style={styles.sectionTitle}>
-          Largeur papier
-        </ThemedText>
-        <View style={styles.row}>
-          {([58, 80] as const).map((width) => (
-            <Pressable
-              key={width}
-              onPress={() => setPaperWidth(width)}
-              style={[styles.widthButton, saved?.paperWidth === width && styles.widthButtonActive]}>
-              <ThemedText>{width}mm</ThemedText>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      <Pressable style={styles.button} onPress={scan} disabled={scanning}>
-        {scanning ? <ActivityIndicator /> : <ThemedText style={styles.buttonText}>Rechercher (appairés)</ThemedText>}
-      </Pressable>
-
-      <FlatList
-        data={devices}
-        keyExtractor={(d) => d.address}
-        style={styles.list}
-        renderItem={({ item }) => (
-          <Pressable style={styles.deviceRow} onPress={() => selectDevice(item)}>
-            <ThemedText>{item.name || 'Sans nom'}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {item.address}
-            </ThemedText>
-          </Pressable>
+    <Screen>
+      <AppScrollView padded contentStyle={styles.content}>
+        {status && (
+          <ThemedView type="backgroundElement" style={styles.status}>
+            <ThemedText type="small">{status}</ThemedText>
+          </ThemedView>
         )}
-        ListEmptyComponent={
-          <ThemedText themeColor="textSecondary" style={styles.emptyList}>
-            Aucun appareil — appairez l&apos;imprimante dans les réglages Bluetooth du téléphone
-            puis appuyez sur Rechercher.
-          </ThemedText>
-        }
-      />
 
-      <Pressable
-        style={[styles.button, styles.testButton, (!saved || testing) && styles.buttonDisabled]}
-        onPress={testPrint}
-        disabled={!saved || testing}>
-        {testing ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.buttonText}>Ticket test</ThemedText>}
-      </Pressable>
+        <View style={styles.section}>
+          <ThemedText type="smallBold">Imprimante actuelle</ThemedText>
+          <ThemedText themeColor="textSecondary">
+            {saved ? `${saved.name ?? 'Sans nom'} (${saved.address})` : 'Aucune imprimante configurée'}
+          </ThemedText>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText type="smallBold" style={styles.sectionTitle}>
+            Largeur papier
+          </ThemedText>
+          <View style={styles.row}>
+            {([58, 80] as const).map((width) => (
+              <Pressable
+                key={width}
+                onPress={() => setPaperWidth(width)}
+                style={[styles.widthButton, saved?.paperWidth === width && styles.widthButtonActive]}>
+                <ThemedText>{width}mm</ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <Pressable style={styles.button} onPress={scan} disabled={scanning}>
+          {scanning ? <ActivityIndicator /> : <ThemedText style={styles.buttonText}>Rechercher (appairés)</ThemedText>}
+        </Pressable>
+
+        <View style={styles.deviceList}>
+          {devices.length === 0 ? (
+            <ThemedText themeColor="textSecondary" style={styles.emptyList}>
+              Aucun appareil — appairez l&apos;imprimante dans les réglages Bluetooth du téléphone
+              puis appuyez sur Rechercher.
+            </ThemedText>
+          ) : (
+            devices.map((item) => (
+              <Pressable key={item.address} style={styles.deviceRow} onPress={() => selectDevice(item)}>
+                <ThemedText>{item.name || 'Sans nom'}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {item.address}
+                </ThemedText>
+              </Pressable>
+            ))
+          )}
+        </View>
+
+        <Pressable
+          style={[styles.button, styles.testButton, (!saved || testing) && styles.buttonDisabled]}
+          onPress={testPrint}
+          disabled={!saved || testing}>
+          {testing ? <ActivityIndicator color="#ffffff" /> : <ThemedText style={styles.buttonText}>Ticket test</ThemedText>}
+        </Pressable>
+      </AppScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.three, gap: Spacing.three },
+  content: { gap: Spacing.three, paddingBottom: Spacing.six },
   status: { padding: Spacing.two, borderRadius: Spacing.two },
   section: { gap: Spacing.one },
   sectionTitle: { marginBottom: Spacing.one },
@@ -173,8 +174,8 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: '#ffffff', fontWeight: '600' },
-  testButton: { marginTop: 'auto' },
-  list: { flex: 1 },
+  testButton: { marginTop: Spacing.two },
+  deviceList: { gap: 0 },
   deviceRow: {
     paddingVertical: Spacing.three,
     borderBottomWidth: StyleSheet.hairlineWidth,
