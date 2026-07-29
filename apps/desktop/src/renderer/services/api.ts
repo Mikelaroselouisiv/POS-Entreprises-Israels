@@ -21,6 +21,7 @@ import type {
   PackagingUnit,
   DepartmentPrinterSettings,
   Product,
+  ProductFamily,
   RevenueReport,
   Sale,
   SessionUser,
@@ -168,6 +169,7 @@ export async function createProduct(payload: {
   cardColor?: string;
   companyId?: number;
   departmentId?: number;
+  productFamilyId?: number | null;
   sku?: string;
   barcode?: string;
   isService?: boolean;
@@ -193,6 +195,7 @@ export async function updateProduct(
     cardColor: string | null;
     companyId: number;
     departmentId: number | null;
+    productFamilyId: number | null;
     sku: string;
     barcode: string;
     description: string;
@@ -213,6 +216,39 @@ export async function updateProduct(
 
 export async function deleteProduct(id: number) {
   await api.delete(`/products/${id}`);
+}
+
+export async function getProductFamilies(companyId: number): Promise<ProductFamily[]> {
+  const { data } = await api.get<ProductFamily[]>('/product-families', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function createProductFamily(payload: {
+  companyId: number;
+  name: string;
+  tiers: Array<{ minQuantity: number; unitPrice: number }>;
+  productIds?: number[];
+}): Promise<ProductFamily> {
+  const { data } = await api.post<ProductFamily>('/product-families', payload);
+  return data;
+}
+
+export async function updateProductFamily(
+  id: number,
+  payload: {
+    name?: string;
+    tiers?: Array<{ minQuantity: number; unitPrice: number }>;
+    productIds?: number[];
+  },
+): Promise<ProductFamily> {
+  const { data } = await api.patch<ProductFamily>(`/product-families/${id}`, payload);
+  return data;
+}
+
+export async function deleteProductFamily(id: number): Promise<void> {
+  await api.delete(`/product-families/${id}`);
 }
 
 export async function getCompany(): Promise<CompanyProfile | null> {

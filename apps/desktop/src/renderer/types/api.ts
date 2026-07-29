@@ -314,6 +314,28 @@ export interface ProductVolumePrice {
   sortOrder: number;
 }
 
+export interface ProductFamilyTier {
+  id: number;
+  productFamilyId: number;
+  minQuantity: string | number;
+  unitPrice: string | number;
+  sortOrder: number;
+}
+
+export interface ProductFamily {
+  id: number;
+  uuid?: string;
+  companyId: number;
+  name: string;
+  tiers: ProductFamilyTier[];
+  products?: Array<{
+    id: number;
+    name: string;
+    companyId?: number;
+    departmentId?: number | null;
+  }>;
+}
+
 export interface ProductSaleUnit {
   id: number;
   productId: number;
@@ -329,6 +351,8 @@ export interface ProductSaleUnit {
 export interface Product {
   id: number;
   companyId?: number;
+  productFamilyId?: number | null;
+  productFamily?: ProductFamily | null;
   name: string;
   cardColor?: string | null;
   sku?: string | null;

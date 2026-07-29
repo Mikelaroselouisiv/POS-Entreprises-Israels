@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { FinanceType, MovementType, Prisma } from '@prisma/client';
-import { resolveVolumeUnitPrice } from '../../common/utils/volume-unit-price';
+import { resolveFamilyUnitPrice, resolveVolumeUnitPrice } from '../../common/utils/volume-unit-price';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DeliveriesService } from '../deliveries/deliveries.service';
@@ -64,11 +64,28 @@ export class SalesService {
       let firstCompanyId: number | null = null;
       let firstDepartmentId: number | null = null;
 
+      const loadedLines: Array<{
+        item: (typeof createSaleDto.items)[number];
+        psu: Awaited<ReturnType<typeof tx.productSaleUnit.findUnique>> & object;
+        baseQuantity: number;
+      }> = [];
+
       for (const item of createSaleDto.items) {
         const psu = await tx.productSaleUnit.findUnique({
           where: { id: item.productSaleUnitId },
           include: {
-            product: true,
+            product: {
+              include: {
+                productFamily: {
+                  include: {
+                    tiers: {
+                      where: { deletedAt: null },
+                      orderBy: { minQuantity: 'asc' },
+                    },
+                  },
+                },
+              },
+            },
             packagingUnit: true,
             volumePrices: { orderBy: { minQuantity: 'asc' } },
           },
@@ -111,13 +128,60 @@ export class SalesService {
           );
         }
 
+        loadedLines.push({ item, psu, baseQuantity });
+      }
+
+      const familyQty = new Map<number, number>();
+      if (!isSpecialSale) {
+        for (const line of loadedLines) {
+          const fid = (line.psu as { product: { productFamilyId: number | null } }).product
+            .productFamilyId;
+          if (fid == null) continue;
+          familyQty.set(fid, (familyQty.get(fid) ?? 0) + Number(line.item.quantity));
+        }
+      }
+
+      for (const line of loadedLines) {
+        const { item, baseQuantity } = line;
+        const psu = line.psu as {
+          id: number;
+          salePrice: Prisma.Decimal;
+          labelOverride: string | null;
+          product: {
+            id: number;
+            name: string;
+            productFamilyId: number | null;
+            productFamily: {
+              tiers: { minQuantity: Prisma.Decimal; unitPrice: Prisma.Decimal }[];
+            } | null;
+          };
+          packagingUnit: { label: string };
+          volumePrices: { minQuantity: Prisma.Decimal; unitPrice: Prisma.Decimal }[];
+        };
+        const product = psu.product;
         const tierRows = psu.volumePrices.map((v) => ({
           minQuantity: Number(v.minQuantity),
           unitPrice: Number(v.unitPrice),
         }));
-        const unitPrice = isSpecialSale
-          ? Number(item.unitPrice)
-          : resolveVolumeUnitPrice(Number(psu.salePrice), tierRows, item.quantity);
+        let unitPrice: number;
+        if (isSpecialSale) {
+          unitPrice = Number(item.unitPrice);
+        } else {
+          const fid = product.productFamilyId;
+          const familyTiers =
+            product.productFamily?.tiers.map((t) => ({
+              minQuantity: Number(t.minQuantity),
+              unitPrice: Number(t.unitPrice),
+            })) ?? [];
+          const familyPrice =
+            fid != null
+              ? resolveFamilyUnitPrice(familyTiers, familyQty.get(fid) ?? 0)
+              : null;
+          unitPrice =
+            familyPrice != null
+              ? familyPrice
+              : resolveVolumeUnitPrice(Number(psu.salePrice), tierRows, item.quantity);
+        }
         const subtotal = unitPrice * item.quantity;
         total += subtotal;
 

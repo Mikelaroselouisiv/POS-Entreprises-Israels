@@ -37,7 +37,7 @@ import { formatRegisterCode } from '../utils/registerDisplay';
 import { MoneyField } from '../components/MoneyField';
 import { useAuth } from '../context/AuthContext';
 import { useAutoClearMessage } from '../hooks/useAutoClearMessage';
-import { resolveVolumeUnitPrice } from '../utils/volumeUnitPrice';
+import { resolveFamilyUnitPrice, resolveVolumeUnitPrice } from '../utils/volumeUnitPrice';
 import { formatMoney, resolveCurrencyCode } from '../utils/currency';
 import { formatQuantity } from '../utils/formatQuantity';
 
@@ -93,10 +93,37 @@ function clampQty(q: number, maxQ: number | undefined): number {
   return roundQty(x);
 }
 
-function effectiveUnitPrice(product: Product | undefined, line: CartLine): number {
+function familyQtyByProduct(
+  cart: CartLine[],
+  productsById: Map<number, Product>,
+): Map<number, number> {
+  const qty = new Map<number, number>();
+  for (const line of cart) {
+    const p = productsById.get(line.productId);
+    const fid = p?.productFamilyId ?? p?.productFamily?.id;
+    if (fid == null) continue;
+    qty.set(fid, (qty.get(fid) ?? 0) + Number(line.quantity));
+  }
+  return qty;
+}
+
+function effectiveUnitPrice(
+  product: Product | undefined,
+  line: CartLine,
+  familyQty?: Map<number, number>,
+): number {
   if (!product) return 0;
   const su = product.saleUnits?.find((s) => s.id === line.productSaleUnitId);
   if (!su) return 0;
+  const fid = product.productFamilyId ?? product.productFamily?.id;
+  if (fid != null && familyQty) {
+    const familyTiers = (product.productFamily?.tiers ?? []).map((t) => ({
+      minQuantity: Number(t.minQuantity),
+      unitPrice: Number(t.unitPrice),
+    }));
+    const familyPrice = resolveFamilyUnitPrice(familyTiers, familyQty.get(fid) ?? 0);
+    if (familyPrice != null) return familyPrice;
+  }
   const tiers = (su.volumePrices ?? []).map((v) => ({
     minQuantity: Number(v.minQuantity),
     unitPrice: Number(v.unitPrice),
@@ -349,6 +376,17 @@ export function PosPage() {
   );
   const activeCart = activeDraft?.cart ?? [];
 
+  const productsById = useMemo(() => {
+    const m = new Map<number, Product>();
+    for (const p of products) m.set(p.id, p);
+    return m;
+  }, [products]);
+
+  const familyQtyMap = useMemo(
+    () => familyQtyByProduct(activeCart, productsById),
+    [activeCart, productsById],
+  );
+
   const cartTotal = useMemo(
     () =>
       activeCart.reduce((sum, l) => {
@@ -357,10 +395,10 @@ export function PosPage() {
           if (price == null || !Number.isFinite(price)) return sum;
           return sum + price * l.quantity;
         }
-        const p = products.find((x) => x.id === l.productId);
-        return sum + effectiveUnitPrice(p, l) * l.quantity;
+        const p = productsById.get(l.productId);
+        return sum + effectiveUnitPrice(p, l, familyQtyMap) * l.quantity;
       }, 0),
-    [activeCart, products, saleMode],
+    [activeCart, productsById, familyQtyMap, saleMode],
   );
 
   const specialPricesReady = useMemo(() => {
@@ -678,11 +716,11 @@ export function PosPage() {
           cashier: cashierLabel,
           receiptClientName: activeDraft.name || null,
           items: activeCart.map((x) => {
-            const pr = products.find((z) => z.id === x.productId);
+            const pr = productsById.get(x.productId);
             const price =
               saleMode === 'special'
                 ? (x.manualUnitPrice ?? 0)
-                : effectiveUnitPrice(pr, x);
+                : effectiveUnitPrice(pr, x, familyQtyMap);
             return {
               name: x.label,
               qty: x.quantity,
@@ -1119,11 +1157,11 @@ export function PosPage() {
           </div>
           <ul className="cart-lines">
             {activeCart.map((l) => {
-              const pr = products.find((x) => x.id === l.productId);
+              const pr = productsById.get(l.productId);
               const unitP =
                 saleMode === 'special'
                   ? (l.manualUnitPrice ?? 0)
-                  : effectiveUnitPrice(pr, l);
+                  : effectiveUnitPrice(pr, l, familyQtyMap);
               const lineTotal =
                 saleMode === 'special' && (l.manualUnitPrice == null || !Number.isFinite(l.manualUnitPrice))
                   ? 0

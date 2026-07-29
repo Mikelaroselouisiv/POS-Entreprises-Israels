@@ -36,6 +36,12 @@ export const ENTITY_FK_MAP: Partial<Record<SyncEntityName, SyncFkRef[]>> = {
   Product: [
     { uuidField: 'companyUuid', idField: 'companyId', parent: 'Company', required: true },
     { uuidField: 'departmentUuid', idField: 'departmentId', parent: 'Department', required: false },
+    {
+      uuidField: 'productFamilyUuid',
+      idField: 'productFamilyId',
+      parent: 'ProductFamily',
+      required: false,
+    },
     { uuidField: 'createdByUuid', idField: 'createdById', parent: 'User', required: false },
     { uuidField: 'updatedByUuid', idField: 'updatedById', parent: 'User', required: false },
   ],
@@ -48,6 +54,17 @@ export const ENTITY_FK_MAP: Partial<Record<SyncEntityName, SyncFkRef[]>> = {
       uuidField: 'productSaleUnitUuid',
       idField: 'productSaleUnitId',
       parent: 'ProductSaleUnit',
+      required: true,
+    },
+  ],
+  ProductFamily: [
+    { uuidField: 'companyUuid', idField: 'companyId', parent: 'Company', required: true },
+  ],
+  ProductFamilyTier: [
+    {
+      uuidField: 'productFamilyUuid',
+      idField: 'productFamilyId',
+      parent: 'ProductFamily',
       required: true,
     },
   ],
@@ -209,6 +226,8 @@ export const RELATION_OBJECT_KEYS = new Set([
   'stockMovements',
   'saleUnits',
   'volumePrices',
+  'productFamily',
+  'tiers',
   'products',
   'users',
   'departments',

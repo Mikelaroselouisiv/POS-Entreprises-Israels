@@ -16,6 +16,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ProductsModule } from './modules/products/products.module';
+import { ProductFamiliesModule } from './modules/product-families/product-families.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { RegisterSessionsModule } from './modules/register-sessions/register-sessions.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -39,6 +40,7 @@ import { PrismaModule } from './prisma/prisma.module';
     CompanyModule,
     PackagingModule,
     ProductsModule,
+    ProductFamiliesModule,
     SalesModule,
     CreditModule,
     BanksModule,

@@ -12,6 +12,8 @@ export const ENTITY_ORDER = [
   'Register',
   'User',
   'ExpenseCategory',
+  'ProductFamily',
+  'ProductFamilyTier',
   'Product',
   'ProductSaleUnit',
   'ProductVolumePrice',

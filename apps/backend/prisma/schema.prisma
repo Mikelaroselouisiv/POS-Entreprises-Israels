@@ -97,6 +97,7 @@ model Company {
   departments      Department[]
   stores           Store[]
   products         Product[]
+  productFamilies  ProductFamily[]
   users            User[]
   expenseCategories ExpenseCategory[]
   purchaseOrders   PurchaseOrder[]
@@ -243,6 +244,9 @@ model Product {
   company      Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   departmentId Int?
   department   Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  /// Famille de prix volume (comptage croisé entre produits à la caisse).
+  productFamilyId Int?
+  productFamily   ProductFamily? @relation(fields: [productFamilyId], references: [id], onDelete: SetNull)
   sku          String?
   barcode      String?
   name         String
@@ -268,6 +272,40 @@ model Product {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
   deletedAt    DateTime?
+
+  @@index([productFamilyId])
+}
+
+/// Famille de produits : paliers de prix basés sur la quantité totale panier de la famille.
+model ProductFamily {
+  id        Int                 @id @default(autoincrement())
+  uuid      String              @unique @default(uuid())
+  companyId Int
+  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  products  Product[]
+  tiers     ProductFamilyTier[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  deletedAt DateTime?
+
+  @@index([companyId])
+}
+
+/// À partir de minQuantity (inclus) d’articles de la famille dans le panier, prix unitaire = unitPrice pour chaque ligne.
+model ProductFamilyTier {
+  id              Int           @id @default(autoincrement())
+  uuid            String        @unique @default(uuid())
+  productFamilyId Int
+  productFamily   ProductFamily @relation(fields: [productFamilyId], references: [id], onDelete: Cascade)
+  minQuantity     Decimal       @db.Decimal(12, 4)
+  unitPrice       Decimal       @db.Decimal(12, 2)
+  sortOrder       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  @@unique([productFamilyId, minQuantity])
 }
 
 model ProductSaleUnit {

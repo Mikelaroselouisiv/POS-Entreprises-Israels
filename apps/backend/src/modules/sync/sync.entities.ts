@@ -6,6 +6,8 @@ export const SYNC_ENTITIES = [
   'PackagingUnit',
   'Store',
   'Register',
+  'ProductFamily',
+  'ProductFamilyTier',
   'Product',
   'ProductSaleUnit',
   'ProductVolumePrice',

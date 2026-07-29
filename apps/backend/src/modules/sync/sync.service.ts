@@ -445,6 +445,8 @@ export class SyncService {
       PackagingUnit: this.prisma.packagingUnit as unknown as Delegate,
       Store: this.prisma.store as unknown as Delegate,
       Register: this.prisma.register as unknown as Delegate,
+      ProductFamily: this.prisma.productFamily as unknown as Delegate,
+      ProductFamilyTier: this.prisma.productFamilyTier as unknown as Delegate,
       Product: this.prisma.product as unknown as Delegate,
       ProductSaleUnit: this.prisma.productSaleUnit as unknown as Delegate,
       ProductVolumePrice: this.prisma.productVolumePrice as unknown as Delegate,
