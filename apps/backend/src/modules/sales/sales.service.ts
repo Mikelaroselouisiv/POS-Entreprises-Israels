@@ -66,7 +66,26 @@ export class SalesService {
 
       const loadedLines: Array<{
         item: (typeof createSaleDto.items)[number];
-        psu: Awaited<ReturnType<typeof tx.productSaleUnit.findUnique>> & object;
+        psu: {
+          id: number;
+          salePrice: Prisma.Decimal;
+          labelOverride: string | null;
+          unitsPerPackage: Prisma.Decimal;
+          product: {
+            id: number;
+            companyId: number;
+            departmentId: number | null;
+            name: string;
+            isService: boolean;
+            trackStock: boolean;
+            productFamilyId: number | null;
+            productFamily: {
+              tiers: { minQuantity: Prisma.Decimal; unitPrice: Prisma.Decimal }[];
+            } | null;
+          };
+          packagingUnit: { label: string };
+          volumePrices: { minQuantity: Prisma.Decimal; unitPrice: Prisma.Decimal }[];
+        };
         baseQuantity: number;
       }> = [];
 
@@ -134,30 +153,14 @@ export class SalesService {
       const familyQty = new Map<number, number>();
       if (!isSpecialSale) {
         for (const line of loadedLines) {
-          const fid = (line.psu as { product: { productFamilyId: number | null } }).product
-            .productFamilyId;
+          const fid = line.psu.product.productFamilyId;
           if (fid == null) continue;
           familyQty.set(fid, (familyQty.get(fid) ?? 0) + Number(line.item.quantity));
         }
       }
 
       for (const line of loadedLines) {
-        const { item, baseQuantity } = line;
-        const psu = line.psu as {
-          id: number;
-          salePrice: Prisma.Decimal;
-          labelOverride: string | null;
-          product: {
-            id: number;
-            name: string;
-            productFamilyId: number | null;
-            productFamily: {
-              tiers: { minQuantity: Prisma.Decimal; unitPrice: Prisma.Decimal }[];
-            } | null;
-          };
-          packagingUnit: { label: string };
-          volumePrices: { minQuantity: Prisma.Decimal; unitPrice: Prisma.Decimal }[];
-        };
+        const { item, psu, baseQuantity } = line;
         const product = psu.product;
         const tierRows = psu.volumePrices.map((v) => ({
           minQuantity: Number(v.minQuantity),
