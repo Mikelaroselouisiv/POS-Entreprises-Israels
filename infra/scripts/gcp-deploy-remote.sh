@@ -25,6 +25,12 @@ fi
 # IAP : le SA GitHub Actions n’a souvent pas d’IP publique SSH ouverte.
 SSH_OPTS=(--zone="${GCP_VM_ZONE}" --project="${GCP_PROJECT_ID}" --tunnel-through-iap)
 
+# Fichiers root-owned dans /tmp bloquent scp (Permission denied) — nettoyer d’abord.
+echo "==> Nettoyage /tmp compose sur ${GCP_VM_NAME}"
+gcloud compute ssh "${GCP_VM_NAME}" \
+  "${SSH_OPTS[@]}" \
+  --command="sudo rm -f /tmp/docker-compose.gcp.yml /tmp/pos-deploy.sh"
+
 echo "==> Copie ${COMPOSE_LOCAL} → ${GCP_VM_NAME}:${COMPOSE_REMOTE}"
 gcloud compute scp "${COMPOSE_LOCAL}" \
   "${GCP_VM_NAME}:/tmp/docker-compose.gcp.yml" \
@@ -40,14 +46,23 @@ gcloud compute ssh "${GCP_VM_NAME}" \
     if command -v gcloud >/dev/null 2>&1; then
       sudo gcloud auth configure-docker northamerica-northeast1-docker.pkg.dev --quiet || true
     fi
-    COMPOSE_CMD=docker-compose
-    if ! command -v docker-compose >/dev/null 2>&1; then COMPOSE_CMD='docker compose'; fi
+    # Prefer Compose V2 — legacy docker-compose 1.29 hits ContainerConfig KeyError
+    if docker compose version >/dev/null 2>&1; then
+      COMPOSE=(docker compose)
+    elif command -v docker-compose >/dev/null 2>&1; then
+      COMPOSE=(docker-compose)
+    else
+      echo 'No docker compose found' >&2
+      exit 1
+    fi
     if [[ ! -f .env.prod ]]; then
       echo 'Erreur: .env.prod manquant' >&2
       exit 1
     fi
-    sudo \$COMPOSE_CMD -f docker-compose.gcp.yml --env-file .env.prod pull
-    sudo \$COMPOSE_CMD -f docker-compose.gcp.yml --env-file .env.prod up -d --force-recreate backend
-    sudo \$COMPOSE_CMD -f docker-compose.gcp.yml ps"
+    sudo \"\${COMPOSE[@]}\" -f docker-compose.gcp.yml --env-file .env.prod pull backend
+    sudo docker rm -f pos_backend_prod || true
+    sudo \"\${COMPOSE[@]}\" -f docker-compose.gcp.yml --env-file .env.prod up -d --no-deps --force-recreate backend
+    sudo \"\${COMPOSE[@]}\" -f docker-compose.gcp.yml ps
+    rm -f /tmp/docker-compose.gcp.yml"
 
 echo "==> Déploiement GCP terminé"
