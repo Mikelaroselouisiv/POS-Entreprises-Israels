@@ -87,10 +87,20 @@ export const ENTITY_FK_MAP: Partial<Record<SyncEntityName, SyncFkRef[]>> = {
   ExpenseCategory: [
     { uuidField: 'companyUuid', idField: 'companyId', parent: 'Company', required: true },
   ],
+  CreditCustomer: [
+    { uuidField: 'companyUuid', idField: 'companyId', parent: 'Company', required: true },
+    { uuidField: 'departmentUuid', idField: 'departmentId', parent: 'Department', required: false },
+  ],
   Sale: [
     { uuidField: 'userUuid', idField: 'userId', parent: 'User', required: false },
     { uuidField: 'storeUuid', idField: 'storeId', parent: 'Store', required: false },
     { uuidField: 'registerUuid', idField: 'registerId', parent: 'Register', required: false },
+    {
+      uuidField: 'creditCustomerUuid',
+      idField: 'creditCustomerId',
+      parent: 'CreditCustomer',
+      required: false,
+    },
   ],
   SaleItem: [
     { uuidField: 'saleUuid', idField: 'saleId', parent: 'Sale', required: true },
@@ -135,6 +145,22 @@ export const ENTITY_FK_MAP: Partial<Record<SyncEntityName, SyncFkRef[]>> = {
     { uuidField: 'categoryUuid', idField: 'categoryId', parent: 'ExpenseCategory', required: false },
     { uuidField: 'userUuid', idField: 'userId', parent: 'User', required: false },
     { uuidField: 'saleUuid', idField: 'saleId', parent: 'Sale', required: false },
+  ],
+  CreditPayment: [
+    {
+      uuidField: 'creditCustomerUuid',
+      idField: 'creditCustomerId',
+      parent: 'CreditCustomer',
+      required: true,
+    },
+    { uuidField: 'saleUuid', idField: 'saleId', parent: 'Sale', required: false },
+    { uuidField: 'userUuid', idField: 'userId', parent: 'User', required: false },
+    {
+      uuidField: 'financeEntryUuid',
+      idField: 'financeEntryId',
+      parent: 'FinanceEntry',
+      required: false,
+    },
   ],
   InventorySession: [
     { uuidField: 'departmentUuid', idField: 'departmentId', parent: 'Department', required: true },
@@ -219,6 +245,9 @@ export const RELATION_OBJECT_KEYS = new Set([
   'components',
   'entries',
   'financeEntry',
+  'creditCustomer',
+  'creditPayment',
+  'creditPayments',
   'delivery',
   'deliveryItem',
   'deliveredBy',

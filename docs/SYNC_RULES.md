@@ -21,26 +21,31 @@ Si un parent requis est introuvable, le push marque `error` et le **curseur n’
 
 ## Règles par famille
 
-### Ventes (`Sale`, `SaleItem`, `Payment`) — append-only
+### Ventes (`Sale`, `SaleItem`, `Payment`, `Delivery`) — LWW
 
-- Une vente créée sur un nœud **ne se modifie pas** côté sync (sauf statut CANCELLED/REFUNDED via API métier).
-- Upsert par `uuid` ou `clientUuid` : si déjà présent → **no-op** (pas de doublon).
-- Soft delete rare (admin) : propager `deletedAt`.
+- Upsert par `uuid` / `clientUuid` ; `Sale.amountPaid` et soft delete se propagent en LWW (`updatedAt`).
+- Les ventes à crédit portent `creditCustomerUuid` (jamais l’Int local).
 
-### Config (`Company`, `Department`, `DepartmentPrinterProfile`, `PackagingUnit`, `User`, `Store`, `Register`)
+### Crédit (`CreditCustomer`, `CreditPayment`)
+
+- `CreditCustomer` : **LWW** (comme la config) — fiche client / plafond / soft delete. Si online est plus récent que le brouillon local, online gagne.
+- `CreditPayment` : **append-only** — insert si `uuid` inconnu (acomptes / remboursements).
+- Les ventes crédit créent aussi `Sale` + `Delivery` (mêmes règles que la caisse) ; sans sync des clients crédit, ces ventes / livraisons restent bloquées (FK).
+
+### Config (`Company`, `Department`, `DepartmentPrinterProfile`, `PackagingUnit`, `User`, `Store`, `Register`, `CreditCustomer`)
 
 - LWW **symétrique** sur `max(updatedAt, deletedAt)` — un admin peut administrer depuis n’importe quel nœud.
 - Soft delete obligatoire pour ces DELETE métier (tombstone synchronisable). **Hard delete = invisible au sync = résurrection** depuis l’autre nœud.
 - Au pull / push : n’écraser que si `effectiveAt(incoming) > effectiveAt(existing)`.
 - Soft delete plus récent gagne ; une édition ultérieure peut « undelete » (`deletedAt: null`) si son `updatedAt` est plus récent.
 
-### Catalogue / stock (`Product`, `ProductSaleUnit`, `ProductVolumePrice`, `ProductRecipe`, `RecipeComponent`)
+### Catalogue / stock (`Product`, `ProductSaleUnit`, `ProductVolumePrice`, `ProductFamily`, `ProductFamilyTier`, `ProductRecipe`, `RecipeComponent`)
 
 - LWW sur `updatedAt`.
 - Champ `stock` : **recalculé** côté réception après application des `StockMovement` append-only (ne pas LWW aveugle sur le stock).
 - Soft delete : `deletedAt` non null → exclure des listes API actives.
 
-### Mouvements & finance (`StockMovement`, `FinanceEntry`, `CashClosure`, `AuditLog`) — append-only
+### Mouvements & finance (`StockMovement`, `FinanceEntry`, `CashClosure`, `AuditLog`, `CreditPayment`) — append-only
 
 - Insert si `uuid` inconnu ; jamais écraser un mouvement existant.
 - `FinanceEntry` liée à une vente : suivre la vente (même `sale.uuid`).
@@ -59,6 +64,7 @@ Si un parent requis est introuvable, le push marque `error` et le **curseur n’
 
 - `Session` (tokens refresh locaux)
 - `SyncState` (état par nœud)
+- `Bank*` (hors périmètre sync actuel)
 
 ## API
 
