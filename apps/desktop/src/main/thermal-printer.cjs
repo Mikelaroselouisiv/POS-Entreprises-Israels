@@ -191,6 +191,8 @@ function buildDisbursementOrderText(data, width = 58) {
     if (prepared) lines.push(clipLine(`Préparé par: ${prepared}`, lineWidth));
     lines.push(separator);
     lines.push(clipLine(`Libellé: ${data.description ?? '—'}`, lineWidth));
+    const detail = String(data.detail ?? '').trim();
+    if (detail) lines.push(clipLine(`Détail: ${detail}`, lineWidth));
     lines.push(clipLine(`Montant: ${formatMoney(data.amount ?? data.total ?? 0)}`, lineWidth));
     lines.push(separator);
   }

@@ -591,6 +591,7 @@ export interface FinanceEntry {
   type: 'INCOME' | 'EXPENSE';
   amount: string | number;
   description: string;
+  detail?: string | null;
   createdAt: string;
   user?: { id: number; fullName?: string | null; phone: string } | null;
 }
@@ -602,6 +603,7 @@ export interface FinanceLedgerRow {
   occurredAt: string;
   amount: number;
   description: string;
+  detail?: string | null;
   user: { id: number; fullName: string | null; phone: string } | null;
 }
 

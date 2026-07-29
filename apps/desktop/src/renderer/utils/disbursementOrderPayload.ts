@@ -16,6 +16,7 @@ export type DisbursementPrintPayload = {
   isTest?: boolean;
   previewSampleBody?: string | null;
   description: string;
+  detail?: string | null;
   amount: number;
   entryDate?: string;
   entryId?: number;
@@ -27,7 +28,7 @@ export type DisbursementPrintPayload = {
 };
 
 export function buildDisbursementOrderPayload(opts: {
-  entry: Pick<FinanceEntry, 'id' | 'amount' | 'description' | 'createdAt'> & {
+  entry: Pick<FinanceEntry, 'id' | 'amount' | 'description' | 'detail' | 'createdAt'> & {
     user?: { fullName?: string | null; phone?: string } | null;
   };
   company: CompanyProfile | null;
@@ -60,6 +61,7 @@ export function buildDisbursementOrderPayload(opts: {
     isTest: !!isTest,
     previewSampleBody: printer?.disbursementPreviewSampleBody ?? null,
     description: entry.description,
+    detail: entry.detail?.trim() || null,
     amount: Number(entry.amount),
     entryDate: entryDateYmd?.trim() || formatYmd(entry.createdAt),
     entryId: entry.id,

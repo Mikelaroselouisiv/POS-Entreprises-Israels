@@ -1067,6 +1067,7 @@ export async function createFinanceEntry(payload: {
   type: 'INCOME' | 'EXPENSE';
   amount: number;
   description: string;
+  detail?: string;
   companyId?: number;
   /** YYYY-MM-DD — date comptable (sinon horodatage serveur). */
   entryDate?: string;

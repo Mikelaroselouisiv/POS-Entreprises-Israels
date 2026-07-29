@@ -28,6 +28,7 @@ export type FinanceLedgerRow = {
   occurredAt: string;
   amount: number;
   description: string;
+  detail: string | null;
   user: { id: number; fullName: string | null; phone: string } | null;
 };
 
@@ -154,6 +155,7 @@ export class FinanceService {
           occurredAt: gr.receivedAt.toISOString(),
           amount,
           description: note ? `${note} (#${gr.id})` : `Réception achat #${gr.id}`,
+          detail: null,
           user: gr.createdBy,
         });
       }
@@ -182,6 +184,7 @@ export class FinanceService {
             occurredAt: fe.createdAt.toISOString(),
             amount: Number(fe.amount),
             description: fe.description,
+            detail: fe.detail?.trim() || null,
             user: fe.user,
           });
         } else {
@@ -191,6 +194,7 @@ export class FinanceService {
             occurredAt: fe.createdAt.toISOString(),
             amount: Number(fe.amount),
             description: fe.description,
+            detail: fe.detail?.trim() || null,
             user: fe.user,
           });
         }
@@ -264,7 +268,9 @@ export class FinanceService {
           {
             date: formatDateTimeFr(row.occurredAt),
             kind: kindFr(row.kind),
-            desc: row.description,
+            desc: row.detail
+              ? `${row.description} — ${row.detail}`
+              : row.description,
             user: row.user?.fullName?.trim() || row.user?.phone || '—',
             amount: formatMoneyHtg(row.amount),
           },
@@ -304,11 +310,14 @@ export class FinanceService {
 
     const createdAt = dto.entryDate ? this.entryDateFromYmd(dto.entryDate) : undefined;
 
+    const detail = dto.detail?.trim() || null;
+
     const entry = await this.prisma.financeEntry.create({
       data: {
         type: dto.type,
         amount: dto.amount,
         description: dto.description,
+        detail,
         userId,
         categoryId,
         ...(createdAt != null ? { createdAt } : {}),

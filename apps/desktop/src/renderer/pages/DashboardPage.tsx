@@ -82,6 +82,7 @@ export function DashboardPage() {
 
   const [expenseLabelChoice, setExpenseLabelChoice] = useState<string>('');
   const [expenseDescOther, setExpenseDescOther] = useState('');
+  const [expenseDetail, setExpenseDetail] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseEntryDate, setExpenseEntryDate] = useState(() => formatYmd(new Date()));
   const [expensePrintOrder, setExpensePrintOrder] = useState(false);
@@ -491,6 +492,7 @@ export function DashboardPage() {
         type: 'EXPENSE',
         amount,
         description,
+        detail: expenseDetail.trim() || undefined,
         companyId: Number(companyId),
         entryDate: expenseEntryDate.trim() || undefined,
       });
@@ -525,6 +527,7 @@ export function DashboardPage() {
 
       setExpenseLabelChoice('');
       setExpenseDescOther('');
+      setExpenseDetail('');
       setExpenseAmount('');
       setExpenseEntryDate(formatYmd(new Date()));
       setExpensePrintOrder(false);
@@ -1277,6 +1280,16 @@ export function DashboardPage() {
                         />
                       </label>
                     ) : null}
+                    <label>
+                      Détail
+                      <textarea
+                        value={expenseDetail}
+                        onChange={(e) => setExpenseDetail(e.target.value)}
+                        placeholder="Précisions optionnelles…"
+                        rows={2}
+                        maxLength={1000}
+                      />
+                    </label>
                     <MoneyField
                       label="Montant"
                       min={0.01}
@@ -1476,6 +1489,11 @@ export function DashboardPage() {
                         </span>
                         <span>
                           <span>{row.description}</span>
+                          {row.detail?.trim() ? (
+                            <span className="dept-hint" style={{ display: 'block', marginTop: '0.15rem' }}>
+                              {row.detail.trim()}
+                            </span>
+                          ) : null}
                           <span className="dept-hint" style={{ display: 'block', marginTop: '0.2rem' }}>
                             {formatDateTime(row.occurredAt)} ·{' '}
                             {row.user?.fullName?.trim() || row.user?.phone || '—'}
