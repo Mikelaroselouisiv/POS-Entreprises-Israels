@@ -1,6 +1,7 @@
 import { formatDateTime } from './datetime';
 import type { Sale } from '../types/api';
 import { formatMoney } from './currency';
+import { saleTxnNumber } from './saleTxnNumber';
 
 function escapeHtml(s: string): string {
   return s
@@ -54,7 +55,7 @@ export function buildSaleDetailPrintHtml(sale: Sale, companyName?: string): stri
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Vente #${sale.id}</title>
+  <title>Vente #${saleTxnNumber(sale)}</title>
   <style>
     body { font-family: system-ui, sans-serif; padding: 1.2rem; color: #111; }
     h1 { font-size: 1.35rem; margin: 0 0 0.5rem; }
@@ -67,7 +68,7 @@ export function buildSaleDetailPrintHtml(sale: Sale, companyName?: string): stri
   </style>
 </head>
 <body>
-  <h1>Vente #${sale.id}</h1>
+  <h1>Vente #${saleTxnNumber(sale)}</h1>
   <div class="meta">
     ${companyName ? `<div><strong>Entreprise :</strong> ${escapeHtml(companyName)}</div>` : ''}
     <div><strong>Date :</strong> ${escapeHtml(formatDateTime(sale.createdAt))}</div>

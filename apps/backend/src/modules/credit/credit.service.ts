@@ -426,6 +426,13 @@ export class CreditService {
         include: { items: true },
       });
 
+      // Numéro métier = id d’origine (aligné impression / dashboard / sync).
+      const txnNumber = sale.id;
+      await tx.sale.update({
+        where: { id: sale.id },
+        data: { txnNumber },
+      });
+
       // Fiche livraison PENDING — stock sort à la livraison (même flux que le POS).
       const delivery = await this.deliveriesService.createFromSaleTx(tx, {
         saleId: sale.id,
@@ -480,6 +487,7 @@ export class CreditService {
 
       return {
         saleId: sale.id,
+        txnNumber,
         total,
         amountPaid: down,
         balanceDue: this.round2(total - down),

@@ -17,7 +17,7 @@ const nav: Array<{ to: string; label: string; permission: string }> = [
 ];
 
 export function AppLayout() {
-  const { user, logout, can, canPerm } = useAuth();
+  const { user, logout, canPerm } = useAuth();
   const navigate = useNavigate();
   const [pendingSales, setPendingSales] = useState(0);
   const syncRunning = useRef(false);
@@ -66,12 +66,7 @@ export function AppLayout() {
     };
   }, [syncPendingSales]);
 
-  const visible = nav.filter((item) => {
-    if (item.permission === 'credit.view') {
-      return can(['ADMIN', 'MANAGER']) || canPerm('credit.view');
-    }
-    return canPerm(item.permission);
-  });
+  const visible = nav.filter((item) => canPerm(item.permission));
 
   return (
     <div className="app-shell">

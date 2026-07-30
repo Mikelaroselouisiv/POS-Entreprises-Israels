@@ -16,6 +16,7 @@ import { useAutoClearMessage } from '../hooks/useAutoClearMessage';
 import { buildReceiptPayloadFromSale } from '../utils/receiptPayload';
 import { buildSaleDetailPrintHtml, openBrowserPrintWindow } from '../utils/saleReceiptBrowserHtml';
 import { formatDateTimeShort } from '../utils/datetime';
+import { saleTxnNumber } from '../utils/saleTxnNumber';
 
 const PAGE_SIZE = 100;
 
@@ -235,7 +236,7 @@ export function DeliveryPage() {
           setMessage(result.reason || "L'impression n'a pas pu aboutir");
           return;
         }
-        setMessage(`Fiche #${saleId} réimprimée`);
+        setMessage(`Fiche #${saleTxnNumber(sale)} réimprimée`);
       } else {
         openBrowserPrintWindow(
           buildSaleDetailPrintHtml(sale, company?.name ?? delivery.company?.name),
@@ -369,7 +370,9 @@ export function DeliveryPage() {
                   onClick={() => openCard(d)}
                 >
                   <div className="delivery-card-top">
-                    <span className="delivery-card-ref">#{d.sale?.id ?? d.saleId}</span>
+                    <span className="delivery-card-ref">
+                      #{d.sale ? saleTxnNumber(d.sale) : d.saleId}
+                    </span>
                     <span className="delivery-card-badge">{STATUS_LABEL[d.status]}</span>
                   </div>
                   <div className="delivery-card-client">
@@ -406,7 +409,9 @@ export function DeliveryPage() {
           <div className="modal card delivery-modal" onClick={(e) => e.stopPropagation()}>
             <div className="delivery-modal-head">
               <div>
-                <div className="delivery-modal-ref">Vente #{selected.sale?.id ?? selected.saleId}</div>
+                <div className="delivery-modal-ref">
+                  Vente #{selected.sale ? saleTxnNumber(selected.sale) : selected.saleId}
+                </div>
                 <div className="delivery-modal-client">
                   {selected.sale?.clientName?.trim() || 'Client'}
                 </div>

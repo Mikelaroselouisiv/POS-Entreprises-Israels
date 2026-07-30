@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { MoneyField } from '../components/MoneyField';
+import { formatDateTimeShort } from '../utils/datetime';
+import { saleTxnNumber } from '../utils/saleTxnNumber';
 import { useAuth } from '../context/AuthContext';
 import { useAutoClearMessage } from '../hooks/useAutoClearMessage';
 import {
@@ -106,8 +108,8 @@ function creditLineUnitPrice(
 }
 
 export function CreditPage() {
-  const { can, user } = useAuth();
-  const canManage = can(['ADMIN', 'MANAGER']);
+  const { canPerm, user } = useAuth();
+  const canManage = canPerm('credit.manage');
   const [message, setMessage] = useAutoClearMessage();
 
   const [companies, setCompanies] = useState<CompanyListItem[]>([]);
@@ -361,7 +363,7 @@ export function CreditPage() {
         note: saleNote.trim() || undefined,
       });
       setMessage(
-        `Vente #${result.saleId} — total ${formatMoney(result.total)}, reste ${formatMoney(result.balanceDue)} (fiche livraison créée)`,
+        `Vente #${result.txnNumber ?? result.saleId} — total ${formatMoney(result.total)}, reste ${formatMoney(result.balanceDue)} (fiche livraison créée)`,
       );
 
       if (printTicket && window.desktopApp?.printReceipt) {
@@ -373,7 +375,7 @@ export function CreditPage() {
           const cashierLabel =
             user?.fullName?.trim() || user?.phone || 'Caissier';
           await window.desktopApp.printReceipt({
-            saleId: result.saleId,
+            saleId: result.txnNumber ?? result.saleId,
             companyName: company?.name ?? 'Entreprise',
             companyPhone: company?.phone ?? null,
             address: [company?.address, company?.city].filter(Boolean).join(', ') || '',
@@ -400,7 +402,7 @@ export function CreditPage() {
           });
         } catch {
           setMessage(
-            `Vente #${result.saleId} enregistrée, mais l’impression a échoué`,
+            `Vente #${result.txnNumber ?? result.saleId} enregistrée, mais l’impression a échoué`,
             { persist: true },
           );
         }
@@ -815,7 +817,7 @@ export function CreditPage() {
                   {detail.sales.map((s) => (
                     <details key={s.id} className="credit-sale-details">
                       <summary>
-                        Vente #{s.id} — {formatDateTime(s.createdAt)} — {formatMoney(s.total)}
+                        Vente #{saleTxnNumber(s)} — {formatDateTime(s.createdAt)} — {formatMoney(s.total)}
                         {s.balanceDue > 0.009 ? (
                           <span className="debt"> (reste {formatMoney(s.balanceDue)})</span>
                         ) : (

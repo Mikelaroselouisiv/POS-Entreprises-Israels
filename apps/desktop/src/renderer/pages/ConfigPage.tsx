@@ -843,9 +843,9 @@ function CompaniesSection({
   onMessage: (m: string, options?: AutoClearMessageOptions) => void;
   onCatalogChanged: () => Promise<void>;
 }) {
-  const { can } = useAuth();
-  const canCreate = can(['ADMIN']);
-  const canEdit = can(['ADMIN', 'MANAGER']);
+  const { can, canPerm } = useAuth();
+  const canCreate = can(['ADMIN']) || canPerm('company.manage');
+  const canEdit = canPerm('company.manage');
   const canDelete = can(['ADMIN']);
 
   const [rows, setRows] = useState<CompanyListItem[]>([]);
@@ -1554,8 +1554,8 @@ function CompanyDepartmentsPanel({
   companyId: number;
   onDepartmentsChanged: () => Promise<void>;
 }) {
-  const { can } = useAuth();
-  const canEdit = can(['ADMIN', 'MANAGER']);
+  const { can, canPerm } = useAuth();
+  const canEdit = canPerm('departments.manage');
   const canDelete = can(['ADMIN']);
 
   const [items, setItems] = useState<Department[]>([]);

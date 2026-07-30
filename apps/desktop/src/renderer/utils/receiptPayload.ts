@@ -1,4 +1,5 @@
 import { formatDateTime } from './datetime';
+import { saleTxnNumber } from './saleTxnNumber';
 import type { CompanyProfile, DepartmentPrinterSettings, Sale } from '../types/api';
 
 export function paymentModeFromSale(sale: Sale): string {
@@ -36,7 +37,7 @@ export function buildReceiptPayloadFromSale(
   const balanceDue = Math.max(0, Math.round((total - amountPaid) * 100) / 100);
   const paperWidth: 58 | 80 = printer?.paperWidth === 80 ? 80 : 58;
   return {
-    saleId: sale.id,
+    saleId: saleTxnNumber(sale),
     companyName: company?.name ?? 'Entreprise',
     companyPhone: company?.phone ?? null,
     address: [company?.address, company?.city].filter(Boolean).join(', ') || '',

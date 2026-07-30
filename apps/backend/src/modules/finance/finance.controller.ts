@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { GetUser } from '../../common/decorators/get-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { formatDateFr } from '../../common/pdf/pdf-format';
@@ -25,7 +25,7 @@ export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
 
   @Get('journal')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('finance.view')
   journal(
     @Query('companyId') companyIdRaw?: string,
     @Query('skip') skipRaw?: string,
@@ -44,7 +44,7 @@ export class FinanceController {
   }
 
   @Get('ledger')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('finance.view')
   ledger(
     @Query('companyId') companyIdRaw?: string,
     @Query('dateFrom') dateFrom?: string,
@@ -80,7 +80,7 @@ export class FinanceController {
   }
 
   @Get('ledger/export/pdf')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('finance.view')
   async exportLedgerPdf(
     @Res() res: Response,
     @Query('companyId') companyIdRaw?: string,
@@ -116,19 +116,19 @@ export class FinanceController {
   }
 
   @Post('entries')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('finance.write')
   createEntry(@Body() dto: CreateFinanceEntryDto, @GetUser() user?: { id?: number }) {
     return this.financeService.createEntry(dto, user?.id);
   }
 
   @Post('cash-closure')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('finance.write')
   closeCash(@Body() dto: CloseCashDto, @GetUser() user?: { id?: number }) {
     return this.financeService.closeCash(dto, user?.id);
   }
 
   @Delete('ledger/:ledgerRowId')
-  @Roles('ADMIN')
+  @Permissions('finance.write')
   deleteLedgerRow(
     @Param('ledgerRowId') ledgerRowId: string,
     @Query('companyId') companyIdRaw?: string,

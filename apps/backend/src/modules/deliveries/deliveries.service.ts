@@ -24,6 +24,7 @@ const deliveryInclude = {
   sale: {
     select: {
       id: true,
+      txnNumber: true,
       total: true,
       clientName: true,
       cashier: true,
@@ -191,7 +192,11 @@ export class DeliveriesService {
         { sale: { clientName: { contains: q, mode: 'insensitive' } } },
       ];
       if (Number.isFinite(asNum) && String(asNum) === q) {
-        or.push({ saleId: asNum }, { id: asNum });
+        or.push(
+          { saleId: asNum },
+          { id: asNum },
+          { sale: { txnNumber: asNum } },
+        );
       }
       where.OR = or;
     }

@@ -1,6 +1,6 @@
 import { BadRequestException, Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { formatFilenameDate } from '../../common/pdf/pdf-format';
@@ -12,25 +12,25 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get('revenue')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   revenue() {
     return this.reportsService.revenue();
   }
 
   @Get('top-products')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   topProducts() {
     return this.reportsService.topProducts();
   }
 
   @Get('sales-by-cashier')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   salesByCashier() {
     return this.reportsService.salesByCashier();
   }
 
   @Get('margin')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   margin(
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
@@ -54,7 +54,7 @@ export class ReportsController {
   }
 
   @Get('dashboard-summary')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   dashboardSummary(
     @Query('companyId') companyIdRaw?: string,
     @Query('companyIds') companyIdsRaw?: string,
@@ -64,7 +64,7 @@ export class ReportsController {
   }
 
   @Get('dashboard-summary-range')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   dashboardSummaryRange(
     @Query('dateFrom') dateFrom: string,
     @Query('dateTo') dateTo: string,
@@ -88,7 +88,7 @@ export class ReportsController {
   }
 
   @Get('dashboard-sales-by-product/export/pdf')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   async exportDashboardSalesByProductPdf(
     @Res() res: Response,
     @Query('companyId') companyIdRaw: string,
@@ -121,7 +121,7 @@ export class ReportsController {
   }
 
   @Get('dashboard-synthesis/export/pdf')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   async exportFinancialSynthesisPdf(
     @Res() res: Response,
     @Query('dateFrom') dateFrom: string,
@@ -154,7 +154,7 @@ export class ReportsController {
   }
 
   @Get('dashboard-sales-by-product')
-  @Roles('ADMIN', 'MANAGER', 'ACCOUNTANT')
+  @Permissions('reports.view')
   dashboardSalesByProduct(
     @Query('period') periodRaw?: string,
     @Query('dateFrom') dateFrom?: string,

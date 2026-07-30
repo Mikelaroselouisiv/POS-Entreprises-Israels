@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { GetUser } from '../../common/decorators/get-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions, PermissionsAny } from '../../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CollectSaleBalanceDto } from './dto/cash-gap.dto';
@@ -27,7 +27,7 @@ export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
   @Post()
-  @Roles('ADMIN', 'MANAGER', 'CASHIER')
+  @Permissions('sales.create')
   create(
     @Body() createSaleDto: CreateSaleDto,
     @GetUser() user?: { id?: number; role?: string },
@@ -36,7 +36,7 @@ export class SalesController {
   }
 
   @Get('cash-gaps')
-  @Roles('ADMIN', 'MANAGER', 'CASHIER')
+  @Permissions('pos.use')
   listCashGaps(
     @Query('companyId') companyIdRaw?: string,
     @Query('departmentId') departmentIdRaw?: string,
@@ -57,7 +57,7 @@ export class SalesController {
   }
 
   @Post(':id/settle-change')
-  @Roles('ADMIN', 'MANAGER', 'CASHIER')
+  @Permissions('sales.create')
   settleChange(
     @Param('id', ParseIntPipe) id: number,
     @GetUser() user?: { id?: number },
@@ -66,7 +66,7 @@ export class SalesController {
   }
 
   @Post(':id/collect-balance')
-  @Roles('ADMIN', 'MANAGER', 'CASHIER')
+  @Permissions('sales.create')
   collectBalance(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CollectSaleBalanceDto,
@@ -76,7 +76,7 @@ export class SalesController {
   }
 
   @Get()
-  @Roles('ADMIN', 'MANAGER', 'CASHIER')
+  @Permissions('sales.view')
   findAll(
     @Query('companyId') companyIdRaw?: string,
     @Query('skip') skipRaw?: string,
@@ -113,7 +113,7 @@ export class SalesController {
   }
 
   @Get(':id/export/pdf')
-  @Roles('ADMIN', 'MANAGER', 'CASHIER', 'LIVREUR', 'ACCOUNTANT')
+  @PermissionsAny('sales.view', 'deliveries.view')
   async exportSalePdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     const buffer = await this.salesService.buildSalePdf(id);
     res.setHeader('Content-Type', 'application/pdf');
@@ -122,26 +122,26 @@ export class SalesController {
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'MANAGER', 'CASHIER', 'LIVREUR', 'ACCOUNTANT')
+  @PermissionsAny('sales.view', 'deliveries.view')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.salesService.findOne(id);
   }
 
   @Patch(':id/cancel')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('sales.cancel')
   cancel(@Param('id', ParseIntPipe) id: number, @GetUser() user?: { id?: number }) {
     return this.salesService.cancelSale(id, user?.id);
   }
 
   @Patch(':id/refund')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('sales.cancel')
   refund(@Param('id', ParseIntPipe) id: number, @GetUser() user?: { id?: number }) {
     return this.salesService.refundSale(id, user?.id);
   }
 
-  /** Suppression définitive : réservé à l’administrateur (rétablit le stock si besoin, efface caisse + vente). */
+  /** Suppression définitive : réservé à qui a sales.delete (ADMIN `*` par défaut). */
   @Delete(':id')
-  @Roles('ADMIN')
+  @Permissions('sales.delete')
   deletePermanently(
     @Param('id', ParseIntPipe) id: number,
     @Query('companyId') companyIdRaw: string | undefined,

@@ -7,6 +7,7 @@ import { formatMoney } from '../utils/currency';
 import { formatQuantity } from '../utils/formatQuantity';
 import { buildSaleDetailPrintHtml, openBrowserPrintWindow } from '../utils/saleReceiptBrowserHtml';
 import { buildReceiptPayloadFromSale } from '../utils/receiptPayload';
+import { saleTxnNumber } from '../utils/saleTxnNumber';
 
 function formatApiError(err: unknown, fallback: string): string {
   if (axios.isAxiosError(err)) {
@@ -144,7 +145,7 @@ export function SaleDetailModal({
         style={{ maxWidth: 560, width: '100%' }}
       >
         <div className="modal-heading">
-          <h2 id="sale-detail-title">Vente #{sale.id}</h2>
+          <h2 id="sale-detail-title">Vente #{saleTxnNumber(sale)}</h2>
           <p className="dept-hint" style={{ margin: 0 }}>
             {formatDateTime(sale.createdAt)}
             {companyName ? ` · ${companyName}` : ''}

@@ -422,6 +422,8 @@ export interface SalePaymentRow {
 
 export interface Sale {
   id: number;
+  /** Numéro métier (impression / tableau) — stable après sync. */
+  txnNumber?: number | null;
   total: number | string;
   subtotal?: number | string;
   tax?: number | string;
@@ -494,6 +496,7 @@ export interface Delivery {
   } | null;
   sale?: {
     id: number;
+    txnNumber?: number | null;
     total: number | string;
     clientName?: string | null;
     cashier?: string | null;

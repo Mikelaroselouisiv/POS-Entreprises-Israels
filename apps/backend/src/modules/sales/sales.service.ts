@@ -1,10 +1,12 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { FinanceType, MovementType, Prisma } from '@prisma/client';
+import { permissionsSatisfy } from '../../common/permissions';
 import { resolveFamilyUnitPrice, resolveVolumeUnitPrice } from '../../common/utils/volume-unit-price';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DeliveriesService } from '../deliveries/deliveries.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { RolesService } from '../roles/roles.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { SalesRepository } from './sales.repository';
 
@@ -16,6 +18,7 @@ export class SalesService {
     private readonly inventoryService: InventoryService,
     private readonly auditService: AuditService,
     private readonly deliveriesService: DeliveriesService,
+    private readonly rolesService: RolesService,
   ) {}
 
   async create(
@@ -28,9 +31,10 @@ export class SalesService {
       createSaleDto.items.some((it) => it.unitPrice != null);
 
     if (isSpecialSale) {
-      if (role !== 'ADMIN' && role !== 'MANAGER') {
+      const perms = role ? await this.rolesService.getPermissionsForUserRole(role) : [];
+      if (!permissionsSatisfy(perms, ['sales.special_price'])) {
         throw new ForbiddenException(
-          'Vente spéciale réservée aux administrateurs et managers',
+          'Vente spéciale réservée aux rôles autorisés (permission sales.special_price)',
         );
       }
       for (const item of createSaleDto.items) {
@@ -45,7 +49,7 @@ export class SalesService {
     if (createSaleDto.clientUuid) {
       const existing = await this.prisma.sale.findUnique({
         where: { clientUuid: createSaleDto.clientUuid },
-        select: { id: true },
+        select: { id: true, txnNumber: true },
       });
       if (existing) return existing;
     }
@@ -54,7 +58,7 @@ export class SalesService {
       if (createSaleDto.clientUuid) {
         const raced = await tx.sale.findUnique({
           where: { clientUuid: createSaleDto.clientUuid },
-          select: { id: true },
+          select: { id: true, txnNumber: true },
         });
         if (raced) return raced;
       }
@@ -256,6 +260,12 @@ export class SalesService {
       const saleId = insertedRows?.[0]?.id;
       if (!saleId) throw new BadRequestException('Impossible de créer la vente.');
 
+      // Numéro métier = id d’origine ; conservé tel quel lors du sync (≠ id local cible).
+      await tx.$executeRaw`
+        UPDATE "Sale" SET "txnNumber" = ${saleId} WHERE "id" = ${saleId} AND "txnNumber" IS NULL
+      `;
+      const txnNumber = saleId;
+
       await tx.saleItem.createMany({
         data: saleItemsData.map((it) => ({
           saleId,
@@ -346,6 +356,7 @@ export class SalesService {
 
       const sale = {
         id: saleId,
+        txnNumber,
         total,
         amountPaid,
         amountReceived,
@@ -893,7 +904,7 @@ export class SalesService {
 
     const doc = createPdfDoc();
     await drawReportHeader(doc, {
-      title: `Ticket de vente #${sale.id}`,
+      title: `Ticket de vente #${sale.txnNumber ?? sale.id}`,
       brand: { companyName, logoUrl },
       metaLines: [generatedMetaLine()],
     });

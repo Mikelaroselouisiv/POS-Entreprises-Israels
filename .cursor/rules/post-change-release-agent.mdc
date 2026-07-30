@@ -1,0 +1,33 @@
+---
+description: Agent post-modification — build, version, git, GitHub, GCP ; mobile en backup download-only
+alwaysApply: true
+---
+
+# Agent post-modification — POS Entreprises Israel
+
+Quand l’utilisateur a **fini** des changements et demande le suivi (build / commit / push / GCP / version), exécuter le skill `.cursor/skills/post-change-release/SKILL.md`.
+
+## Périmètre de cette machine
+
+| Développer & pousser | Ne pas développer / ne pas publier |
+|----------------------|-------------------------------------|
+| `apps/backend` | `apps/mobile` (pas de build EAS, pas d’upload mobile) |
+| `apps/desktop` Remote + Server | Ne pas écraser les artefacts mobile en ligne |
+| `apps/sync-agent`, `infra/**` | |
+
+**Mobile :** télécharger / backuper localement les nouvelles versions publiées ailleurs — **jamais** `gsutil cp` vers un préfixe mobile, jamais EAS submit.
+
+## Git / GitHub
+
+- Remote ops : **`israels`** → `POS-Entreprises-Israels` (pas `origin` / Parallele)
+- Commit seulement si demandé ; style release : `Ship desktop X.Y.Z with …`
+- Ne pas committer : `release/`, `*.tar`, `.env`, secrets, exe
+
+## Versioning desktop
+
+Source de vérité : `apps/desktop/package.json` (Remote + Server partagent la même version).  
+Bump selon l’impact : patch (fix), minor (feature), major (breaking). Actuel : voir le fichier.
+
+## GCP
+
+Avant toute op cloud : `assert-israel-gcp.ps1` — projet **`pos-entrprise-israel`** uniquement.

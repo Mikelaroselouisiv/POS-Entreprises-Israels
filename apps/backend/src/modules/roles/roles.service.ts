@@ -67,8 +67,11 @@ export class RolesService implements OnModuleInit {
       where: { code: userRoleCode, deletedAt: null, isActive: true },
     });
     if (!userRole) return false;
-    if (requiredRoles.includes(userRole.code)) return true;
+    if (userRole.permissions.includes('*')) return true;
 
+    // Ne plus court-circuiter sur le seul code de rôle (ex. MANAGER) :
+    // un gérant sans les permissions cibles ne doit pas passer.
+    // Compat : accès si les permissions du rôle couvrent celles d’au moins un rôle requis.
     for (const req of requiredRoles) {
       const target = await this.prisma.appRole.findFirst({
         where: { code: req, deletedAt: null, isActive: true },
@@ -172,6 +175,13 @@ export class RolesService implements OnModuleInit {
     const revokedByRole: Record<string, string[]> = {
       CASHIER: ['config.view', 'config.manage'],
     };
+    /**
+     * Nouvelles permissions catalogue à ajouter une fois (remplacent d’anciens hardcodes),
+     * sans réinjecter tout le défaut MANAGER.
+     */
+    const grantIfMissingByRole: Record<string, string[]> = {
+      MANAGER: ['sales.special_price'],
+    };
 
     for (const [code, perms] of Object.entries(DEFAULT_ROLE_PERMISSIONS)) {
       const existing = await this.prisma.appRole.findFirst({ where: { code } });
@@ -190,9 +200,10 @@ export class RolesService implements OnModuleInit {
       if (existing.permissions.includes('*')) continue;
 
       const revoked = new Set(revokedByRole[code] ?? []);
-      const withoutRevoked = existing.permissions.filter((p) => !revoked.has(p));
-      const missing = perms.filter((p) => !withoutRevoked.includes(p));
-      const next = [...withoutRevoked, ...missing];
+      let next = existing.permissions.filter((p) => !revoked.has(p));
+      for (const p of grantIfMissingByRole[code] ?? []) {
+        if (!next.includes(p)) next = [...next, p];
+      }
       const changed =
         next.length !== existing.permissions.length ||
         next.some((p, i) => p !== existing.permissions[i]);

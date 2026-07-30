@@ -1274,6 +1274,7 @@ export async function createCreditSale(payload: {
 }) {
   const { data } = await api.post<{
     saleId: number;
+    txnNumber?: number;
     total: number;
     amountPaid: number;
     balanceDue: number;

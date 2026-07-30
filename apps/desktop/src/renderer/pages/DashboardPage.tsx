@@ -38,6 +38,7 @@ import type {
   StockMovementRow,
 } from '../types/api';
 import { formatQuantity } from '../utils/formatQuantity';
+import { saleTxnNumber } from '../utils/saleTxnNumber';
 import { useAutoClearMessage } from '../hooks/useAutoClearMessage';
 import { useAuth } from '../context/AuthContext';
 import { AuditJournalPanel } from '../components/AuditJournalPanel';
@@ -66,10 +67,10 @@ export function DashboardPage() {
 
   const { can, canPerm } = useAuth();
   const isAdmin = can(['ADMIN']);
-  const isManager = can(['MANAGER']);
-  const canAccessDashboard = isAdmin || isManager;
-  const canManageFinance = isAdmin || isManager;
-  const canCancelOrRefund = isAdmin || canPerm('sales.cancel');
+  const canAccessDashboard = canPerm('dashboard.view');
+  const canManageFinance = canPerm('finance.write');
+  const canCancelOrRefund = canPerm('sales.cancel');
+  const canDeleteSale = canPerm('sales.delete');
   const canSeePurchases = isAdmin;
 
   const [tab, setTab] = useState<TabId>(isAdmin ? 'synthese' : 'ventes');
@@ -709,7 +710,7 @@ export function DashboardPage() {
   async function confirmDeleteSale(sale: Sale) {
     if (companyId === '') return;
     const ok = window.confirm(
-      `Supprimer définitivement la vente n°${sale.id} ?\n\n` +
+      `Supprimer définitivement la vente n°${saleTxnNumber(sale)} ?\n\n` +
         `Cette action est irréversible : la vente, les lignes, les paiements et l’écriture de caisse seront effacés de la base. ` +
         `Si la vente était encore « complétée », le stock livré sera rétabli.`,
     );
@@ -745,7 +746,7 @@ export function DashboardPage() {
 
   async function confirmCancelSale(sale: Sale) {
     const ok = window.confirm(
-      `Annuler la vente n°${sale.id} ?\n\n` +
+      `Annuler la vente n°${saleTxnNumber(sale)} ?\n\n` +
         `L’écriture de caisse sera retirée. Le stock déjà livré sera réintégré.`,
     );
     if (!ok) return;
@@ -754,7 +755,7 @@ export function DashboardPage() {
     try {
       await cancelSale(sale.id);
       removeSaleFromList(sale.id);
-      setMsg(`Vente n°${sale.id} annulée.`);
+      setMsg(`Vente n°${saleTxnNumber(sale)} annulée.`);
     } catch {
       setMsg('Impossible d’annuler cette vente.', { persist: true });
     } finally {
@@ -764,7 +765,7 @@ export function DashboardPage() {
 
   async function confirmRefundSale(sale: Sale) {
     const ok = window.confirm(
-      `Rembourser la vente n°${sale.id} (${formatMoney(sale.total)}) ?\n\n` +
+      `Rembourser la vente n°${saleTxnNumber(sale)} (${formatMoney(sale.total)}) ?\n\n` +
         `L’écriture de caisse sera retirée. Le stock déjà livré sera réintégré.`,
     );
     if (!ok) return;
@@ -773,7 +774,7 @@ export function DashboardPage() {
     try {
       await refundSale(sale.id);
       removeSaleFromList(sale.id);
-      setMsg(`Vente n°${sale.id} remboursée.`);
+      setMsg(`Vente n°${saleTxnNumber(sale)} remboursée.`);
     } catch {
       setMsg('Impossible de rembourser cette vente.', { persist: true });
     } finally {
@@ -1133,17 +1134,17 @@ export function DashboardPage() {
                         <th>Total</th>
                         <th>Caissier</th>
                         <th>Statut</th>
-                        {canCancelOrRefund || isAdmin ? <th>Actions</th> : null}
+                        {canCancelOrRefund || canDeleteSale ? <th>Actions</th> : null}
                       </tr>
                     </thead>
                     <tbody>
                       {salesLoading && sales.length === 0 ? (
                         <tr>
-                          <td colSpan={canCancelOrRefund || isAdmin ? 7 : 6}>Chargement…</td>
+                          <td colSpan={canCancelOrRefund || canDeleteSale ? 7 : 6}>Chargement…</td>
                         </tr>
                       ) : sales.length === 0 ? (
                         <tr>
-                          <td colSpan={canCancelOrRefund || isAdmin ? 7 : 6}>
+                          <td colSpan={canCancelOrRefund || canDeleteSale ? 7 : 6}>
                             Aucune vente pour cette entreprise.
                           </td>
                         </tr>
@@ -1163,7 +1164,7 @@ export function DashboardPage() {
                             tabIndex={0}
                             style={{ cursor: 'pointer' }}
                           >
-                            <td>{s.id}</td>
+                            <td>{saleTxnNumber(s)}</td>
                             <td>{formatDateTime(s.createdAt)}</td>
                             <td>{(s.clientName && s.clientName.trim()) || '—'}</td>
                             <td className="journal-amt">{formatMoney(s.total)}</td>
@@ -1179,7 +1180,7 @@ export function DashboardPage() {
                                     ? 'Remboursée'
                                     : s.status}
                             </td>
-                            {canCancelOrRefund || isAdmin ? (
+                            {canCancelOrRefund || canDeleteSale ? (
                               <td
                                 onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => e.stopPropagation()}
@@ -1190,7 +1191,7 @@ export function DashboardPage() {
                                       type="button"
                                       className="btn btn-secondary btn-sm"
                                       disabled={saleActionBusy}
-                                      aria-label={`Rembourser la vente n°${s.id}`}
+                                      aria-label={`Rembourser la vente n°${saleTxnNumber(s)}`}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         void confirmRefundSale(s);
@@ -1199,12 +1200,12 @@ export function DashboardPage() {
                                       Rembourser
                                     </button>
                                   ) : null}
-                                  {isAdmin ? (
+                                  {canDeleteSale ? (
                                     <button
                                       type="button"
                                       className="btn btn-danger btn-sm"
                                       disabled={saleDeletingId === s.id}
-                                      aria-label={`Supprimer définitivement la vente n°${s.id}`}
+                                      aria-label={`Supprimer définitivement la vente n°${saleTxnNumber(s)}`}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         void confirmDeleteSale(s);

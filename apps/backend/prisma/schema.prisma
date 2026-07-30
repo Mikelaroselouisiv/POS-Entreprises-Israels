@@ -348,6 +348,8 @@ model ProductVolumePrice {
 model Sale {
   id         Int         @id @default(autoincrement())
   uuid       String      @unique @default(uuid())
+  /// Numéro métier imprimé / affiché (conservé au sync ; distinct de l’id local).
+  txnNumber  Int?
   /// UUID généré côté client (offline) pour idempotence push.
   clientUuid String?     @unique
   total      Decimal     @db.Decimal(12, 2)
@@ -386,6 +388,7 @@ model Sale {
   @@index([creditCustomerId, createdAt])
   @@index([changeDue, status])
   @@index([amountPaid, status])
+  @@index([txnNumber])
 }
 
 model SaleItem {

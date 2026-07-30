@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { GetUser } from '../../common/decorators/get-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { BanksService } from './banks.service';
@@ -25,7 +25,7 @@ import {
 
 @Controller('banks')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'MANAGER')
+@Permissions('banks.view')
 export class BanksController {
   constructor(private readonly banksService: BanksService) {}
 
@@ -46,11 +46,13 @@ export class BanksController {
   }
 
   @Post()
+  @Permissions('banks.manage')
   createBank(@Body() dto: CreateBankDto, @GetUser() user?: { id?: number }) {
     return this.banksService.createBank(dto, user?.id);
   }
 
   @Patch(':id')
+  @Permissions('banks.manage')
   updateBank(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateBankDto,
@@ -60,11 +62,13 @@ export class BanksController {
   }
 
   @Post('accounts')
+  @Permissions('banks.manage')
   createAccount(@Body() dto: CreateBankAccountDto, @GetUser() user?: { id?: number }) {
     return this.banksService.createAccount(dto, user?.id);
   }
 
   @Patch('accounts/:id')
+  @Permissions('banks.manage')
   updateAccount(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateBankAccountDto,
@@ -89,6 +93,7 @@ export class BanksController {
   }
 
   @Post('transactions')
+  @Permissions('banks.manage')
   createTransaction(
     @Body() dto: CreateBankTransactionDto,
     @GetUser() user?: { id?: number },
@@ -97,7 +102,7 @@ export class BanksController {
   }
 
   @Delete('transactions/:id')
-  @Roles('ADMIN')
+  @Permissions('banks.manage')
   deleteTransaction(
     @Param('id', ParseIntPipe) id: number,
     @Query('companyId', ParseIntPipe) companyId: number,

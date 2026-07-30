@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { GetUser } from '../../common/decorators/get-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
@@ -26,25 +26,25 @@ export class ProductFamiliesController {
   constructor(private readonly productFamiliesService: ProductFamiliesService) {}
 
   @Get()
-  @Roles('ADMIN', 'MANAGER', 'CASHIER')
+  @Permissions('products.view')
   list(@Query('companyId', ParseIntPipe) companyId: number) {
     return this.productFamiliesService.list(companyId);
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'MANAGER', 'CASHIER')
+  @Permissions('products.view')
   getById(@Param('id', ParseIntPipe) id: number) {
     return this.productFamiliesService.getById(id);
   }
 
   @Post()
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('products.manage')
   create(@Body() dto: CreateProductFamilyDto, @GetUser() user?: { id?: number }) {
     return this.productFamiliesService.create(dto, user?.id);
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('products.manage')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateProductFamilyDto,
@@ -54,7 +54,7 @@ export class ProductFamiliesController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN', 'MANAGER')
+  @Permissions('products.manage')
   remove(@Param('id', ParseIntPipe) id: number, @GetUser() user?: { id?: number }) {
     return this.productFamiliesService.softDelete(id, user?.id);
   }
