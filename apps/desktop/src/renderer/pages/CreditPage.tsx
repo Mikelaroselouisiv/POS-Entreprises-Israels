@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { MoneyField } from '../components/MoneyField';
-import { formatDateTimeShort } from '../utils/datetime';
 import { saleTxnNumber } from '../utils/saleTxnNumber';
 import { useAuth } from '../context/AuthContext';
 import { useAutoClearMessage } from '../hooks/useAutoClearMessage';
