@@ -272,10 +272,23 @@ select {
   font-size: 0.82rem;
 }
 
+.app-update-btn--login {
+  width: auto;
+  min-width: 12rem;
+}
+
 .app-update-btn--hot {
   border-color: var(--ei-accent);
   color: var(--ei-accent);
   font-weight: 650;
+}
+
+.login-update-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--ei-border);
 }
 
 .app-update-dot {

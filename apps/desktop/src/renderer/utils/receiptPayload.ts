@@ -2,11 +2,29 @@ import { formatDateTime } from './datetime';
 import { saleTxnNumber } from './saleTxnNumber';
 import type { CompanyProfile, DepartmentPrinterSettings, Sale } from '../types/api';
 
+function paymentModeLabel(method: string): string {
+  switch (method) {
+    case 'CASH':
+      return 'Espèces';
+    case 'CARD':
+      return 'Carte';
+    case 'MOBILE_MONEY':
+      return 'Mobile money';
+    case 'SPLIT':
+      return 'Mixte';
+    case 'CREDIT':
+      return 'À crédit';
+    default:
+      return method;
+  }
+}
+
 export function paymentModeFromSale(sale: Sale): string {
+  if (sale.creditCustomerId != null) return 'À crédit';
   const pays = sale.payments ?? [];
   if (pays.length === 0) return 'N/A';
-  if (pays.length === 1) return pays[0].method;
-  return 'SPLIT';
+  if (pays.length === 1) return paymentModeLabel(String(pays[0].method));
+  return 'Mixte';
 }
 
 export function cashierLabelFromSale(sale: Sale): string {

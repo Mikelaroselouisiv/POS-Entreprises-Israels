@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getAuthSetupStatus, getToken } from '../services/api';
+import { AppUpdateControls } from '../components/AppUpdateControls';
 import { BrandLogo } from '../components/BrandLogo';
 import { PasswordField } from '../components/PasswordField';
 import { BRAND_NAME } from '../config/brand';
@@ -104,6 +105,9 @@ export function LoginPage() {
       <main className="login-page">
         <div className="auth-card card">
           <p className="login-sub">Chargement…</p>
+          <div className="login-update-row">
+            <AppUpdateControls variant="login" />
+          </div>
         </div>
       </main>
     );
@@ -168,6 +172,9 @@ export function LoginPage() {
               {loading ? 'Création…' : 'Créer l’administrateur'}
             </button>
           </form>
+          <div className="login-update-row">
+            <AppUpdateControls variant="login" />
+          </div>
         </div>
       </main>
     );
@@ -207,6 +214,9 @@ export function LoginPage() {
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
+        <div className="login-update-row">
+          <AppUpdateControls variant="login" />
+        </div>
       </div>
     </main>
   );

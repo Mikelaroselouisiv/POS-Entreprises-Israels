@@ -82,17 +82,6 @@ app.whenReady().then(async () => {
 
   await localDb.initLocalDb(app.getPath('userData'));
 
-  if (getAppEdition() === 'server' && !isDev) {
-    const stack = await ensureServerStack();
-    if (!stack.ok) {
-      await dialog.showMessageBox({
-        type: 'error',
-        title: 'Serveur local',
-        message: stack.message || 'Impossible de démarrer le serveur local.',
-      });
-    }
-  }
-
   ipcMain.handle('localdb:outboxEnqueue', (_e, payload) => localDb.outboxEnqueue(payload));
   ipcMain.handle('localdb:outboxList', () => localDb.outboxList());
   ipcMain.handle('localdb:outboxRemove', (_e, id) => {
@@ -112,10 +101,20 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('app:get-edition', () => getAppEdition());
 
+  // Fenêtre + mises à jour d’abord : Server peut se mettre à jour même si Docker/API locale est lent.
   createWindow();
-
-  // Mises à jour Remote + Server (GCS) — IPC toujours enregistré ; actif seulement en build packagé.
   initUpdater();
+
+  if (getAppEdition() === 'server' && !isDev) {
+    const stack = await ensureServerStack();
+    if (!stack.ok) {
+      await dialog.showMessageBox({
+        type: 'error',
+        title: 'Serveur local',
+        message: stack.message || 'Impossible de démarrer le serveur local.',
+      });
+    }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

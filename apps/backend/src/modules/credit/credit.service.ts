@@ -402,21 +402,13 @@ export class CreditService {
               productSaleUnitId: it.productSaleUnitId,
             })),
           },
+          // Un seul paiement CREDIT (total) : pas de Payment CASH d’acompte,
+          // sinon la caisse classique le compterait comme encaissé POS.
+          // L’acompte réel passe par CreditPayment + FinanceEntry ci-dessous.
           payments: {
             create: [
-              ...(down > 0.009
-                ? [
-                    {
-                      amount: down,
-                      method: (dto.downPaymentMethod && dto.downPaymentMethod !== PaymentMethod.CREDIT
-                        ? dto.downPaymentMethod
-                        : PaymentMethod.CASH) as PaymentMethod,
-                      reference: 'Acompte crédit',
-                    },
-                  ]
-                : []),
               {
-                amount: this.round2(total - down),
+                amount: total,
                 method: PaymentMethod.CREDIT,
                 reference: dto.note?.trim() || 'Vente à crédit',
               },
@@ -444,7 +436,7 @@ export class CreditService {
         })),
       });
 
-      // Acompte → journal finance (cash), sans lier saleId unique POS.
+      // Acompte → journal entreprise « Encaissements crédit » (hors caisse POS).
       if (down > 0.009) {
         const categoryId = await this.findOrCreateCreditCashCategoryId(tx, customer.companyId);
         const fe = await tx.financeEntry.create({

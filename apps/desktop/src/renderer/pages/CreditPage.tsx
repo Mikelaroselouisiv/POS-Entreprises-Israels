@@ -390,7 +390,7 @@ export function CreditPage() {
               };
             }),
             total: result.total,
-            paymentMode: Number(downPayment) > 0 ? 'SPLIT' : 'CREDIT',
+            paymentMode: 'À crédit',
             paperWidth: printer?.paperWidth === 80 ? 80 : 58,
             printerName: printer?.deviceName ?? '',
             receiptHeaderText: printer?.receiptHeaderText ?? null,
@@ -913,12 +913,16 @@ export function CreditPage() {
                 Total : <strong>{formatMoney(cartTotal)}</strong>
               </p>
               <MoneyField
-                label="Acompte (optionnel)"
+                label="Acompte (optionnel — board Crédit, hors caisse POS)"
                 value={downPayment}
                 onChange={(e) => setDownPayment(e.target.value)}
                 min={0}
                 step="0.01"
               />
+              <p className="credit-hint">
+                La vente crée une fiche livraison et compte dans les synthèses / journal d’entreprise.
+                Elle n’est pas encaissée sur la caisse classique — les remboursements se font ici.
+              </p>
               <label>
                 Note
                 <input value={saleNote} onChange={(e) => setSaleNote(e.target.value)} />

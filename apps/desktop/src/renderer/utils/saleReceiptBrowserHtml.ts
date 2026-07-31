@@ -21,6 +21,8 @@ function paymentMethodLabel(method: string): string {
       return 'Mobile money';
     case 'SPLIT':
       return 'Mixte';
+    case 'CREDIT':
+      return 'À crédit';
     default:
       return method;
   }

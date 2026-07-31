@@ -436,6 +436,8 @@ export interface Sale {
   changeDue?: number | string;
   changeSettledAt?: string | null;
   cashBalanceSettledAt?: string | null;
+  /** Présent si la vente vient du board Crédit (hors caisse POS). */
+  creditCustomerId?: number | null;
   userId?: number | null;
   user?: {
     id: number;

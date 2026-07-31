@@ -226,12 +226,15 @@ export class RegisterSessionsService {
     const openedAt = session.openedAt;
     const openingCash = this.round2(Number(session.openingCashAmount ?? 0));
 
+    // Hors ventes crédit (board Crédit) : leurs acomptes / créances
+    // ne doivent jamais gonfler la caisse classique.
     const cashPayments = await this.prisma.payment.findMany({
       where: {
         method: 'CASH',
         sale: {
           deletedAt: null,
           status: 'COMPLETED',
+          creditCustomerId: null,
           createdAt: { gte: openedAt },
           OR: [
             { userId: session.openedById },

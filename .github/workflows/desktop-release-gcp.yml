@@ -1,4 +1,4 @@
-# Build desktop Remote, generate latest.yml, upload to GCS installers/remote/.
+# Build desktop Remote et/ou Server, génère latest.yml, upload GCS installers/{edition}/.
 # ISRAEL ONLY — never point this workflow at Frères Baziles.
 #
 # Secrets: GCP_PROJECT_ID, GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
@@ -10,11 +10,12 @@ on:
   workflow_dispatch:
     inputs:
       edition:
-        description: 'Flavor desktop'
+        description: 'Flavor desktop (both = Remote + Server)'
         required: true
-        default: remote
+        default: both
         type: choice
         options:
+          - both
           - remote
           - server
   push:
@@ -22,11 +23,36 @@ on:
       - 'desktop-v*'
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      editions: ${{ steps.set.outputs.editions }}
+    steps:
+      - id: set
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            case "${{ inputs.edition }}" in
+              both)   echo 'editions=["remote","server"]' >> "$GITHUB_OUTPUT" ;;
+              remote) echo 'editions=["remote"]' >> "$GITHUB_OUTPUT" ;;
+              server) echo 'editions=["server"]' >> "$GITHUB_OUTPUT" ;;
+              *)      echo 'editions=["remote","server"]' >> "$GITHUB_OUTPUT" ;;
+            esac
+          else
+            # Tags desktop-v* : publier les deux feeds (même bouton MAJ Remote + Server).
+            echo 'editions=["remote","server"]' >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: prepare
     runs-on: windows-latest
     permissions:
       contents: read
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: ${{ fromJSON(needs.prepare.outputs.editions) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -41,19 +67,13 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
-      - name: Resolve edition
-        id: meta
-        shell: bash
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "edition=${{ inputs.edition }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "edition=remote" >> "$GITHUB_OUTPUT"
-          fi
+      # Server : Docker Desktop (Linux containers) doit être dispo sur le runner
+      # pour emballer backend/postgres/sync-agent. Sinon prepare-server-stack
+      # avertit et continue — préférer un build local + upload pour Server.
 
       - name: Build Windows installer
         working-directory: apps/desktop
-        run: npm run dist:win:${{ steps.meta.outputs.edition }}
+        run: npm run dist:win:${{ matrix.edition }}
 
       - name: Authenticate to Google Cloud (WIF — Israel)
         uses: google-github-actions/auth@v2
@@ -67,6 +87,6 @@ jobs:
       - name: Upload to GCS
         shell: pwsh
         run: |
-          $edition = '${{ steps.meta.outputs.edition }}'
+          $edition = '${{ matrix.edition }}'
           if ('${{ secrets.GCP_PROJECT_ID }}' -match 'freres|bazile') { throw 'ABORT: Freres Baziles project forbidden' }
           & ./infra/scripts/upload-desktop-installer.ps1 -Edition $edition

@@ -42,7 +42,12 @@ function statusLabel(state: DesktopUpdaterState): string {
   }
 }
 
-export function AppUpdateControls() {
+export function AppUpdateControls({
+  variant = 'sidebar',
+}: {
+  /** sidebar = pied de nav ; login = écran connexion (Remote + Server). */
+  variant?: 'sidebar' | 'login';
+}) {
   const updater = typeof window !== 'undefined' ? window.desktopApp?.updater : undefined;
   const [state, setState] = useState<DesktopUpdaterState>(IDLE_STATE);
   const [open, setOpen] = useState(false);
@@ -88,9 +93,21 @@ export function AppUpdateControls() {
 
   const hasUpdate =
     state.status === 'available' || state.status === 'downloading' || state.status === 'downloaded';
-  const buttonClass = hasUpdate
-    ? 'btn btn-ghost app-update-btn app-update-btn--hot'
-    : 'btn btn-ghost app-update-btn';
+  const buttonClass = [
+    'btn',
+    variant === 'login' ? 'btn-secondary' : 'btn-ghost',
+    'app-update-btn',
+    hasUpdate ? 'app-update-btn--hot' : '',
+    variant === 'login' ? 'app-update-btn--login' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const buttonLabel = hasUpdate
+    ? 'Mettre à jour'
+    : variant === 'login'
+      ? `v${state.currentVersion} · Mise à jour`
+      : `v${state.currentVersion}`;
 
   return (
     <>
@@ -109,7 +126,7 @@ export function AppUpdateControls() {
         {hasUpdate ? (
           <span className="app-update-dot" aria-hidden />
         ) : null}
-        {hasUpdate ? 'Mettre à jour' : `v${state.currentVersion}`}
+        {buttonLabel}
       </button>
 
       {open ? (
@@ -126,7 +143,7 @@ export function AppUpdateControls() {
             onClick={(e) => e.stopPropagation()}
           >
             <header className="modal-heading">
-              <h2 id="app-update-title">Mises à jour</h2>
+              <h2 id="app-update-title">Mises à jour logicielles</h2>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
                 Fermer
               </button>
@@ -138,17 +155,23 @@ export function AppUpdateControls() {
                 {state.edition ? (
                   <>
                     {' '}
-                    · Édition <strong>{state.edition}</strong>
+                    · Édition{' '}
+                    <strong>{state.edition === 'server' ? 'Server' : 'Remote'}</strong>
                   </>
                 ) : null}
               </p>
 
               {!state.enabled ? (
                 <p className="muted">
-                  Les mises à jour automatiques sont disponibles dans l’application installée
-                  (Remote ou Server), pas en mode développement.
+                  Les mises à jour en ligne (Remote et Server) fonctionnent dans l’application
+                  installée, pas en mode développement.
                 </p>
-              ) : null}
+              ) : (
+                <p className="muted">
+                  Télécharge la dernière version publiée en ligne pour cette édition, puis
+                  redémarre pour l’installer.
+                </p>
+              )}
 
               {promptReason === 'reminder' ? (
                 <p className="app-update-banner">Rappel : une mise à jour est toujours disponible.</p>
@@ -211,7 +234,7 @@ export function AppUpdateControls() {
                   disabled={busy || state.status === 'checking' || state.status === 'downloading'}
                   onClick={() => void run(() => updater.check())}
                 >
-                  Vérifier
+                  Vérifier les mises à jour
                 </button>
               ) : null}
 

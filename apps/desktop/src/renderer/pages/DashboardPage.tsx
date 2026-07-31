@@ -1173,7 +1173,9 @@ export function DashboardPage() {
                             </td>
                             <td>
                               {s.status === 'COMPLETED'
-                                ? 'Complétée'
+                                ? s.creditCustomerId != null
+                                  ? 'Crédit'
+                                  : 'Complétée'
                                 : s.status === 'CANCELLED'
                                   ? 'Annulée'
                                   : s.status === 'REFUNDED'

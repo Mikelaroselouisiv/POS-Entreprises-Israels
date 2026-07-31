@@ -39,6 +39,8 @@ function paymentMethodLabel(method: string): string {
       return 'Mobile money';
     case 'SPLIT':
       return 'Mixte';
+    case 'CREDIT':
+      return 'À crédit (non encaissé caisse)';
     default:
       return method;
   }
@@ -192,9 +194,21 @@ export function SaleDetailModal({
           Total : {formatMoney(sale.total)}
         </p>
 
+        {sale.creditCustomerId != null ? (
+          <p className="info-text" style={{ margin: '0.35rem 0 0' }}>
+            Vente à crédit — payé {formatMoney(sale.amountPaid ?? 0)} · reste{' '}
+            {formatMoney(
+              Math.max(0, Number(sale.total) - Number(sale.amountPaid ?? 0)),
+            )}{' '}
+            (encaissement via board Crédit, hors caisse)
+          </p>
+        ) : null}
+
         {sale.payments && sale.payments.length > 0 ? (
           <>
-            <h3 style={{ margin: '1rem 0 0.35rem', fontSize: '0.95rem' }}>Paiements</h3>
+            <h3 style={{ margin: '1rem 0 0.35rem', fontSize: '0.95rem' }}>
+              {sale.creditCustomerId != null ? 'Mode de règlement' : 'Paiements'}
+            </h3>
             <ul className="simple-list" style={{ marginTop: 0 }}>
               {sale.payments.map((p, i) => (
                 <li key={p.id ?? i} className="simple-list-row">
