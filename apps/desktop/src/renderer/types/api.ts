@@ -376,9 +376,11 @@ export interface SaleItemPayload {
 }
 
 export interface PaymentPayload {
-  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT' | 'CREDIT';
+  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT' | 'CREDIT' | 'BANK';
   amount: number;
   reference?: string;
+  /** Requis si method = BANK. */
+  bankAccountId?: number;
 }
 
 export interface CreateSalePayload {
@@ -415,8 +417,9 @@ export interface SaleCashGaps {
 export interface SalePaymentRow {
   id?: number;
   amount: string | number;
-  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT' | 'CREDIT';
+  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT' | 'CREDIT' | 'BANK';
   reference?: string | null;
+  bankAccountId?: number | null;
   createdAt?: string;
 }
 

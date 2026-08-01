@@ -24,6 +24,9 @@ export const SYNC_ENTITIES = [
   'StockMovement',
   'FinanceEntry',
   'CreditPayment',
+  'Bank',
+  'BankAccount',
+  'BankTransaction',
   'InventorySession',
   'InventoryLine',
   'PurchaseOrder',
@@ -59,4 +62,6 @@ export const CONFIG_ENTITIES = new Set<SyncEntityName>([
   'Store',
   'Register',
   'CreditCustomer',
+  'Bank',
+  'BankAccount',
 ]);

@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { FinanceType, MovementType, Prisma } from '@prisma/client';
+import { BankTransactionType, FinanceType, MovementType, PaymentMethod, Prisma } from '@prisma/client';
 import { permissionsSatisfy } from '../../common/permissions';
 import { resolveFamilyUnitPrice, resolveVolumeUnitPrice } from '../../common/utils/volume-unit-price';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -208,6 +208,12 @@ export class SalesService {
         });
       }
 
+      for (const p of createSaleDto.payments) {
+        if (p.method === PaymentMethod.BANK && (p.bankAccountId == null || p.bankAccountId < 1)) {
+          throw new BadRequestException('Compte bancaire requis pour un paiement banque');
+        }
+      }
+
       const paymentTotal = createSaleDto.payments.reduce((acc, p) => acc + p.amount, 0);
       const tenderedRaw =
         createSaleDto.amountReceived != null ? Number(createSaleDto.amountReceived) : null;
@@ -290,36 +296,80 @@ export class SalesService {
       if (appliedPayments.length === 0 && amountPaid > 0.009) {
         appliedPayments = [
           {
-            method: createSaleDto.payments[0]?.method ?? ('CASH' as const),
+            method: createSaleDto.payments[0]?.method ?? PaymentMethod.CASH,
             amount: amountPaid,
             reference: createSaleDto.payments[0]?.reference,
+            bankAccountId: createSaleDto.payments[0]?.bankAccountId,
           },
         ];
       }
 
+      // Valider / créditer les comptes banque (hors caisse) avant d’enregistrer les paiements.
+      const bankPaymentRefs = new Map<number, string>();
+      for (let i = 0; i < appliedPayments.length; i++) {
+        const payment = appliedPayments[i];
+        if (payment.method !== PaymentMethod.BANK || payment.amount <= 0.009) continue;
+        const accountId = payment.bankAccountId;
+        if (accountId == null) {
+          throw new BadRequestException('Compte bancaire requis pour un paiement banque');
+        }
+        const account = await tx.bankAccount.findFirst({
+          where: {
+            id: accountId,
+            deletedAt: null,
+            isActive: true,
+            bank: { deletedAt: null, isActive: true },
+            ...(firstCompanyId != null ? { companyId: firstCompanyId } : {}),
+          },
+          include: { bank: { select: { id: true, name: true } } },
+        });
+        if (!account) {
+          throw new BadRequestException('Compte bancaire introuvable ou inactif');
+        }
+        await tx.bankTransaction.create({
+          data: {
+            bankAccountId: account.id,
+            type: BankTransactionType.DEPOSIT,
+            amount: payment.amount,
+            description: `Vente #${txnNumber} — ${account.bank.name} / ${account.name}`,
+            reference: `saleTxn:${txnNumber}`,
+            userId: userId ?? null,
+          },
+        });
+        bankPaymentRefs.set(i, payment.reference?.trim() || `${account.bank.name} · ${account.name}`);
+      }
+
       await tx.payment.createMany({
-        data: appliedPayments.map((payment) => ({
+        data: appliedPayments.map((payment, i) => ({
           saleId,
           amount: payment.amount as unknown as Prisma.Decimal,
           method: payment.method,
-          reference: payment.reference ?? null,
+          reference: bankPaymentRefs.get(i) ?? payment.reference ?? null,
+          bankAccountId:
+            payment.method === PaymentMethod.BANK ? (payment.bankAccountId ?? null) : null,
         })),
       });
 
       // Journal financier : INCOME = part réellement appliquée (hors CREDIT).
+      // BANK y figure (revenu) mais n’entre PAS dans le cash de fermeture de caisse.
       const cashCollected = appliedPayments
-        .filter((p) => p.method !== 'CREDIT')
+        .filter((p) => p.method !== PaymentMethod.CREDIT)
         .reduce((acc, p) => acc + p.amount, 0);
       if (firstCompanyId != null && cashCollected > 0.009) {
         const categoryId = await this.findOrCreateVentesPosCategoryId(tx, firstCompanyId);
+        const onlyBank =
+          appliedPayments.length > 0 &&
+          appliedPayments.every((p) => p.method === PaymentMethod.BANK);
         await tx.financeEntry.create({
           data: {
             type: FinanceType.INCOME,
             amount: cashCollected,
             description:
               cashCollected + 0.01 < total
-                ? `Encaissement partiel vente #${saleId}`
-                : `Encaissement vente #${saleId}`,
+                ? `Encaissement partiel vente #${txnNumber}`
+                : onlyBank
+                  ? `Encaissement banque vente #${txnNumber}`
+                  : `Encaissement vente #${txnNumber}`,
             userId: userId ?? null,
             categoryId,
             saleId,
@@ -644,6 +694,7 @@ export class SalesService {
     }
     return this.prisma.$transaction(async (tx) => {
       await this.reverseDeliveredStockForSale(tx, id, userId, 'Annulation vente');
+      await this.reverseBankDepositsForSale(tx, id);
       await tx.financeEntry.deleteMany({ where: { saleId: id } });
       const updated = await tx.sale.update({
         where: { id },
@@ -672,6 +723,7 @@ export class SalesService {
     }
     return this.prisma.$transaction(async (tx) => {
       await this.reverseDeliveredStockForSale(tx, id, userId, 'Remboursement vente');
+      await this.reverseBankDepositsForSale(tx, id);
       await tx.financeEntry.deleteMany({ where: { saleId: id } });
       const updated = await tx.sale.update({
         where: { id },
@@ -720,6 +772,7 @@ export class SalesService {
         );
       }
 
+      await this.reverseBankDepositsForSale(tx, saleId);
       await tx.financeEntry.updateMany({
         where: { saleId, deletedAt: null },
         data: { deletedAt: now },
@@ -762,6 +815,24 @@ export class SalesService {
       data: { companyId, name },
     });
     return created.id;
+  }
+
+  /** Annule les dépôts banque liés à une vente POS (`saleTxn:{txnNumber}` / ancien `sale:{id}`). */
+  private async reverseBankDepositsForSale(tx: Prisma.TransactionClient, saleId: number) {
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      select: { id: true, txnNumber: true },
+    });
+    const refs = [`sale:${saleId}`];
+    if (sale?.txnNumber != null) refs.push(`saleTxn:${sale.txnNumber}`);
+    await tx.bankTransaction.updateMany({
+      where: {
+        deletedAt: null,
+        reference: { in: refs },
+        type: BankTransactionType.DEPOSIT,
+      },
+      data: { deletedAt: new Date() },
+    });
   }
 
   /**
@@ -897,6 +968,10 @@ export class SalesService {
           return 'Mobile money';
         case 'SPLIT':
           return 'Mixte';
+        case 'BANK':
+          return 'Banque';
+        case 'CREDIT':
+          return 'À crédit';
         default:
           return method;
       }

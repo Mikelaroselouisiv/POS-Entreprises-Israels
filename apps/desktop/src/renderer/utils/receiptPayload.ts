@@ -14,6 +14,8 @@ function paymentModeLabel(method: string): string {
       return 'Mixte';
     case 'CREDIT':
       return 'À crédit';
+    case 'BANK':
+      return 'Banque';
     default:
       return method;
   }

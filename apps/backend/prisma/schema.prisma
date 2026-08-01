@@ -19,6 +19,8 @@ enum PaymentMethod {
   MOBILE_MONEY
   SPLIT
   CREDIT
+  /// Virement / dépôt banque — crédite un compte, hors fond de caisse.
+  BANK
 }
 
 enum MovementType {
@@ -451,16 +453,21 @@ model DeliveryItem {
 }
 
 model Payment {
-  id        Int           @id @default(autoincrement())
-  uuid      String        @unique @default(uuid())
-  saleId    Int
-  amount    Decimal       @db.Decimal(12, 2)
-  method    PaymentMethod
-  reference String?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  deletedAt DateTime?
-  sale      Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  id            Int           @id @default(autoincrement())
+  uuid          String        @unique @default(uuid())
+  saleId        Int
+  amount        Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod
+  reference     String?
+  /// Compte crédité lorsque method = BANK.
+  bankAccountId Int?
+  bankAccount   BankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  sale          Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([bankAccountId])
 }
 
 model StockMovement {
@@ -740,6 +747,7 @@ model BankAccount {
   isActive       Boolean           @default(true)
   note           String?
   transactions   BankTransaction[]
+  payments       Payment[]
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   deletedAt      DateTime?

@@ -12,6 +12,7 @@ import {
   getInventoryCountSheet,
   getPrinterSettings,
   getRegisterClosingCashPreview,
+  listBanks,
   listRegisters,
   listSaleCashGaps,
   openRegisterSession,
@@ -28,6 +29,7 @@ import type {
   InventoryCountSheetRow,
   Product,
   ProductSaleUnit,
+  BankRow,
   RegisterListItem,
   RegisterSessionDetail,
   SaleCashGapRow,
@@ -144,21 +146,31 @@ export function PosPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | ''>('');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | ''>('');
-  type PaymentMethod = 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT';
+  type PaymentMethod = 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT' | 'BANK';
   type SaleDraft = {
     id: string;
     cart: CartLine[];
     paymentMethod: PaymentMethod;
     name: string;
+    bankId: number | '';
+    bankAccountId: number | '';
   };
 
-  const [drafts, setDrafts] = useState<SaleDraft[]>(() => [
-    { id: 'd1', cart: [], paymentMethod: 'CASH', name: 'Client' },
-  ]);
+  const emptyDraft = (id: string): SaleDraft => ({
+    id,
+    cart: [],
+    paymentMethod: 'CASH',
+    name: 'Client',
+    bankId: '',
+    bankAccountId: '',
+  });
+
+  const [drafts, setDrafts] = useState<SaleDraft[]>(() => [emptyDraft('d1')]);
   const [activeDraftId, setActiveDraftId] = useState<string>('d1');
   const [status, setStatus] = useAutoClearMessage();
   const [printTicket, setPrintTicket] = useState(false);
   const [amountReceived, setAmountReceived] = useState('');
+  const [banks, setBanks] = useState<BankRow[]>([]);
   const [cashGaps, setCashGaps] = useState<{
     changeOwed: SaleCashGapRow[];
     balanceOwed: SaleCashGapRow[];
@@ -446,11 +458,28 @@ export function PosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveCompanyId, effectiveDepartmentId, salesEnabled]);
 
+  useEffect(() => {
+    const cid = effectiveCompanyId;
+    if (cid == null) {
+      setBanks([]);
+      return;
+    }
+    void listBanks({ companyId: cid })
+      .then((rows) => setBanks(rows.filter((b) => b.isActive)))
+      .catch(() => setBanks([]));
+  }, [effectiveCompanyId]);
+
+  const activeBankAccounts = useMemo(() => {
+    if (!activeDraft || activeDraft.bankId === '') return [];
+    const bank = banks.find((b) => b.id === activeDraft.bankId);
+    return (bank?.accounts ?? []).filter((a) => a.isActive);
+  }, [activeDraft, banks]);
+
   function switchSaleMode(mode: 'classic' | 'special') {
     if (mode === saleMode) return;
     if (mode === 'special' && !canSpecialSale) return;
     setSaleMode(mode);
-    setDrafts([{ id: 'd1', cart: [], paymentMethod: 'CASH', name: 'Client' }]);
+    setDrafts([emptyDraft('d1')]);
     setActiveDraftId('d1');
   }
 
@@ -463,7 +492,11 @@ export function PosPage() {
     // Si c'est la dernière fiche, on la réinitialise pour continuer à encaisser.
     if (drafts.length <= 1) {
       setDrafts((prev) =>
-        prev.map((d) => (d.id === activeDraftId ? { ...d, cart: [], name: 'Client' } : d)),
+        prev.map((d) =>
+          d.id === activeDraftId
+            ? { ...d, cart: [], name: 'Client', bankId: '', bankAccountId: '' }
+            : d,
+        ),
       );
       return;
     }
@@ -476,12 +509,17 @@ export function PosPage() {
 
   function createDraft() {
     const nextId = `d${Date.now()}`;
-    setDrafts((prev) => [...prev, { id: nextId, cart: [], paymentMethod: 'CASH', name: 'Client' }]);
+    setDrafts((prev) => [...prev, emptyDraft(nextId)]);
     setActiveDraftId(nextId);
   }
 
   function setActivePaymentMethod(m: PaymentMethod) {
-    updateActiveDraft((d) => ({ ...d, paymentMethod: m }));
+    updateActiveDraft((d) => ({
+      ...d,
+      paymentMethod: m,
+      ...(m !== 'BANK' ? { bankId: '' as const, bankAccountId: '' as const } : {}),
+    }));
+    if (m !== 'CASH' && m !== 'SPLIT') setAmountReceived('');
   }
 
   function setActiveDraftName(name: string) {
@@ -659,6 +697,17 @@ export function PosPage() {
       return;
     }
 
+    if (activeDraft.paymentMethod === 'BANK') {
+      if (activeDraft.bankId === '' || activeDraft.bankAccountId === '') {
+        setStatus('Choisissez la banque et le compte', { persist: true });
+        return;
+      }
+      if (!navigator.onLine) {
+        setStatus('Paiement banque indisponible hors ligne', { persist: true });
+        return;
+      }
+    }
+
     const clientName = activeDraft.name || null;
     const clientUuid =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -676,6 +725,9 @@ export function PosPage() {
         {
           method: activeDraft.paymentMethod,
           amount: applied > 0.009 ? applied : total > 0.009 ? applied : 0.01,
+          ...(activeDraft.paymentMethod === 'BANK' && typeof activeDraft.bankAccountId === 'number'
+            ? { bankAccountId: activeDraft.bankAccountId }
+            : {}),
         },
       ],
       clientName,
@@ -733,7 +785,18 @@ export function PosPage() {
           amountReceived: sale.amountReceived ?? tendered,
           changeDue: sale.changeDue ?? changeDue,
           balanceDue: sale.balanceDue ?? balanceDue,
-          paymentMode: activeDraft.paymentMethod,
+          paymentMode:
+            activeDraft.paymentMethod === 'CASH'
+              ? 'Espèces'
+              : activeDraft.paymentMethod === 'CARD'
+                ? 'Carte'
+                : activeDraft.paymentMethod === 'MOBILE_MONEY'
+                  ? 'Mobile money'
+                  : activeDraft.paymentMethod === 'SPLIT'
+                    ? 'Mixte'
+                    : activeDraft.paymentMethod === 'BANK'
+                      ? 'Banque'
+                      : activeDraft.paymentMethod,
           paperWidth: printer?.paperWidth === 80 ? 80 : 58,
           printerName: printer?.deviceName ?? '',
           receiptHeaderText: printer?.receiptHeaderText ?? null,
@@ -1074,8 +1137,57 @@ export function PosPage() {
                 <option value="CARD">Carte</option>
                 <option value="MOBILE_MONEY">Mobile money</option>
                 <option value="SPLIT">Mixte</option>
+                <option value="BANK">Banque</option>
               </select>
             </label>
+            {activeDraft.paymentMethod === 'BANK' ? (
+              <>
+                <label>
+                  Banque
+                  <select
+                    value={activeDraft.bankId === '' ? '' : String(activeDraft.bankId)}
+                    disabled={!salesEnabled}
+                    onChange={(e) => {
+                      const bankId = e.target.value === '' ? '' : Number(e.target.value);
+                      updateActiveDraft((d) => ({
+                        ...d,
+                        bankId,
+                        bankAccountId: '',
+                      }));
+                    }}
+                  >
+                    <option value="">Choisir…</option>
+                    {banks.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Compte
+                  <select
+                    value={
+                      activeDraft.bankAccountId === '' ? '' : String(activeDraft.bankAccountId)
+                    }
+                    disabled={!salesEnabled || activeDraft.bankId === ''}
+                    onChange={(e) => {
+                      const bankAccountId =
+                        e.target.value === '' ? '' : Number(e.target.value);
+                      updateActiveDraft((d) => ({ ...d, bankAccountId }));
+                    }}
+                  >
+                    <option value="">Choisir…</option>
+                    {activeBankAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                        {a.accountNumber ? ` (${a.accountNumber})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
           </div>
           <div className="product-grid">
             {displayedProducts.map((p) => {
@@ -1310,7 +1422,9 @@ export function PosPage() {
             disabled={
               activeCart.length === 0 ||
               !specialPricesReady ||
-              (showTenderField && amountReceived.trim() === '')
+              (showTenderField && amountReceived.trim() === '') ||
+              (activeDraft.paymentMethod === 'BANK' &&
+                (activeDraft.bankId === '' || activeDraft.bankAccountId === ''))
             }
             onClick={() => void checkout()}
           >

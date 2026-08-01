@@ -114,6 +114,28 @@ export const ENTITY_FK_MAP: Partial<Record<SyncEntityName, SyncFkRef[]>> = {
   ],
   Payment: [
     { uuidField: 'saleUuid', idField: 'saleId', parent: 'Sale', required: true },
+    {
+      uuidField: 'bankAccountUuid',
+      idField: 'bankAccountId',
+      parent: 'BankAccount',
+      required: false,
+    },
+  ],
+  Bank: [
+    { uuidField: 'companyUuid', idField: 'companyId', parent: 'Company', required: true },
+  ],
+  BankAccount: [
+    { uuidField: 'companyUuid', idField: 'companyId', parent: 'Company', required: true },
+    { uuidField: 'bankUuid', idField: 'bankId', parent: 'Bank', required: true },
+  ],
+  BankTransaction: [
+    {
+      uuidField: 'bankAccountUuid',
+      idField: 'bankAccountId',
+      parent: 'BankAccount',
+      required: true,
+    },
+    { uuidField: 'userUuid', idField: 'userId', parent: 'User', required: false },
   ],
   Delivery: [
     { uuidField: 'saleUuid', idField: 'saleId', parent: 'Sale', required: true },
@@ -263,4 +285,9 @@ export const RELATION_OBJECT_KEYS = new Set([
   'stores',
   'printerProfile',
   'packagingUnits',
+  'bank',
+  'banks',
+  'bankAccount',
+  'accounts',
+  'transactions',
 ]);
