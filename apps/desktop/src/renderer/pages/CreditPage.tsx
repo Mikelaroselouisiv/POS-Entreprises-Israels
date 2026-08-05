@@ -15,11 +15,13 @@ import {
   getDepartments,
   getPrinterSettings,
   getProducts,
+  listBanks,
   listCreditCustomers,
   recordCreditPayment,
   updateCreditCustomer,
 } from '../services/api';
 import type {
+  BankRow,
   CompanyListItem,
   CreditCustomerDetail,
   CreditCustomerListItem,
@@ -145,7 +147,11 @@ export function CreditPage() {
 
   const [payAmount, setPayAmount] = useState('');
   const [paySaleId, setPaySaleId] = useState<number | ''>('');
-  const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'MOBILE_MONEY'>('CASH');
+  type PayMethod = 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'BANK';
+  const [payMethod, setPayMethod] = useState<PayMethod>('CASH');
+  const [payBankId, setPayBankId] = useState<number | ''>('');
+  const [payBankAccountId, setPayBankAccountId] = useState<number | ''>('');
+  const [banks, setBanks] = useState<BankRow[]>([]);
   const [payNote, setPayNote] = useState('');
   const [payBusy, setPayBusy] = useState(false);
 
@@ -170,6 +176,22 @@ export function CreditPage() {
       .then(setDepartments)
       .catch(() => setDepartments([]));
   }, [companyId]);
+
+  useEffect(() => {
+    if (typeof companyId !== 'number') {
+      setBanks([]);
+      return;
+    }
+    void listBanks({ companyId })
+      .then((rows) => setBanks(rows.filter((b) => b.isActive)))
+      .catch(() => setBanks([]));
+  }, [companyId]);
+
+  const payBankAccounts = useMemo(() => {
+    if (payBankId === '') return [];
+    const bank = banks.find((b) => b.id === payBankId);
+    return (bank?.accounts ?? []).filter((a) => a.isActive);
+  }, [banks, payBankId]);
 
   async function refreshList(cid = companyId) {
     if (typeof cid !== 'number') return;
@@ -425,6 +447,12 @@ export function CreditPage() {
       setMessage('Montant invalide');
       return;
     }
+    if (payMethod === 'BANK') {
+      if (payBankId === '' || payBankAccountId === '') {
+        setMessage('Choisissez la banque et le compte', { persist: true });
+        return;
+      }
+    }
     setPayBusy(true);
     try {
       const result = await recordCreditPayment({
@@ -432,16 +460,24 @@ export function CreditPage() {
         amount,
         saleId: typeof paySaleId === 'number' ? paySaleId : undefined,
         method: payMethod,
+        ...(payMethod === 'BANK' && typeof payBankAccountId === 'number'
+          ? { bankAccountId: payBankAccountId }
+          : {}),
         note: payNote.trim() || undefined,
       });
       setMessage(
-        `Encaissement ${formatMoney(result.applied)} enregistré (finance entreprise)${
+        `Encaissement ${formatMoney(result.applied)} enregistré${
+          payMethod === 'BANK' ? ' (banque + finance entreprise)' : ' (finance entreprise)'
+        }${
           result.unused > 0.009 ? ` — surplus non affecté ${formatMoney(result.unused)}` : ''
         }`,
       );
       setShowPayModal(false);
       setPayAmount('');
       setPaySaleId('');
+      setPayMethod('CASH');
+      setPayBankId('');
+      setPayBankAccountId('');
       setPayNote('');
       await openFiche(detail.id);
       await refreshList();
@@ -715,6 +751,10 @@ export function CreditPage() {
                       onClick={() => {
                         setPayAmount(detail.balance > 0 ? String(detail.balance) : '');
                         setPaySaleId('');
+                        setPayMethod('CASH');
+                        setPayBankId('');
+                        setPayBankAccountId('');
+                        setPayNote('');
                         setShowPayModal(true);
                       }}
                     >
@@ -986,26 +1026,87 @@ export function CreditPage() {
                 Mode
                 <select
                   value={payMethod}
-                  onChange={(e) => setPayMethod(e.target.value as 'CASH' | 'CARD' | 'MOBILE_MONEY')}
+                  onChange={(e) => {
+                    const m = e.target.value as PayMethod;
+                    setPayMethod(m);
+                    if (m !== 'BANK') {
+                      setPayBankId('');
+                      setPayBankAccountId('');
+                    }
+                  }}
                 >
                   <option value="CASH">Espèces</option>
                   <option value="CARD">Carte</option>
                   <option value="MOBILE_MONEY">Mobile money</option>
+                  <option value="BANK">Banque</option>
                 </select>
               </label>
+              {payMethod === 'BANK' ? (
+                <>
+                  <label>
+                    Banque
+                    <select
+                      value={payBankId === '' ? '' : String(payBankId)}
+                      onChange={(e) => {
+                        const bankId = e.target.value === '' ? '' : Number(e.target.value);
+                        setPayBankId(bankId);
+                        setPayBankAccountId('');
+                      }}
+                      required
+                    >
+                      <option value="">Choisir…</option>
+                      {banks.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Compte
+                    <select
+                      value={payBankAccountId === '' ? '' : String(payBankAccountId)}
+                      disabled={payBankId === ''}
+                      onChange={(e) => {
+                        setPayBankAccountId(
+                          e.target.value === '' ? '' : Number(e.target.value),
+                        );
+                      }}
+                      required
+                    >
+                      <option value="">Choisir…</option>
+                      {payBankAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                          {a.accountNumber ? ` (${a.accountNumber})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
               <label>
                 Note
                 <input value={payNote} onChange={(e) => setPayNote(e.target.value)} />
               </label>
               <p className="credit-hint">
-                Cet encaissement crée une entrée INCOME « Encaissements crédit » dans les transactions
-                financières globales.
+                {payMethod === 'BANK'
+                  ? 'Cet encaissement crédite le compte banque choisi et crée une entrée INCOME « Encaissements crédit ».'
+                  : 'Cet encaissement crée une entrée INCOME « Encaissements crédit » dans les transactions financières globales.'}
               </p>
               <div className="credit-form-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowPayModal(false)}>
                   Annuler
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={payBusy}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={
+                    payBusy ||
+                    (payMethod === 'BANK' &&
+                      (payBankId === '' || payBankAccountId === ''))
+                  }
+                >
                   {payBusy ? 'Enregistrement…' : 'Encaisser'}
                 </button>
               </div>

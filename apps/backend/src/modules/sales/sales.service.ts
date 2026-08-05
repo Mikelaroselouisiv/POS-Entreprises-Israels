@@ -464,85 +464,98 @@ export class SalesService {
    * Écarts cash ouverts (héritage entre sessions de caisse) :
    * - changeDue > 0 : l’entreprise doit la monnaie au client
    * - amountPaid < total : le client doit un reste
+   *
+   * Important: on filtre directement les écarts ouverts (pas un échantillon
+   * des N plus anciennes ventes, sinon les nouveaux écarts disparaissent
+   * dès que l’historique dépasse cette fenêtre).
    */
   async listCashGaps(opts: { companyId: number; departmentId?: number; take?: number }) {
     const take = Math.min(100, Math.max(1, Math.floor(opts.take ?? 50)));
-    const deptFilter =
+    const deptClause =
       opts.departmentId != null
-        ? {
-            items: {
-              some: {
-                deletedAt: null,
-                product: { companyId: opts.companyId, departmentId: opts.departmentId },
-              },
-            },
-          }
-        : {
-            items: {
-              some: { deletedAt: null, product: { companyId: opts.companyId } },
-            },
-          };
+        ? Prisma.sql`AND EXISTS (
+            SELECT 1 FROM "SaleItem" si
+            JOIN "Product" p ON p.id = si."productId"
+            WHERE si."saleId" = s.id
+              AND si."deletedAt" IS NULL
+              AND p."companyId" = ${opts.companyId}
+              AND p."departmentId" = ${opts.departmentId}
+          )`
+        : Prisma.sql`AND EXISTS (
+            SELECT 1 FROM "SaleItem" si
+            JOIN "Product" p ON p.id = si."productId"
+            WHERE si."saleId" = s.id
+              AND si."deletedAt" IS NULL
+              AND p."companyId" = ${opts.companyId}
+          )`;
 
-    const rows = await this.prisma.sale.findMany({
-      where: {
-        deletedAt: null,
-        status: 'COMPLETED',
-        creditCustomerId: null,
-        ...deptFilter,
-      },
-      select: {
-        id: true,
-        total: true,
-        amountPaid: true,
-        amountReceived: true,
-        changeDue: true,
-        clientName: true,
-        cashier: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'asc' },
-      take: 300,
-    });
+    type GapRow = {
+      id: number;
+      total: Prisma.Decimal | number;
+      amountPaid: Prisma.Decimal | number;
+      amountReceived: Prisma.Decimal | number;
+      changeDue: Prisma.Decimal | number;
+      clientName: string | null;
+      cashier: string | null;
+      createdAt: Date;
+    };
 
-    const changeOwed = rows
-      .filter((s) => Number(s.changeDue) > 0.009)
-      .slice(0, take)
-      .map((s) => ({
+    const changeRows = await this.prisma.$queryRaw<GapRow[]>`
+      SELECT s.id, s.total, s."amountPaid", s."amountReceived", s."changeDue",
+             s."clientName", s.cashier, s."createdAt"
+      FROM "Sale" s
+      WHERE s."deletedAt" IS NULL
+        AND s.status = 'COMPLETED'
+        AND s."creditCustomerId" IS NULL
+        AND s."changeDue" > 0.009
+        ${deptClause}
+      ORDER BY s."createdAt" ASC
+      LIMIT ${take}
+    `;
+
+    const balanceRows = await this.prisma.$queryRaw<GapRow[]>`
+      SELECT s.id, s.total, s."amountPaid", s."amountReceived", s."changeDue",
+             s."clientName", s.cashier, s."createdAt"
+      FROM "Sale" s
+      WHERE s."deletedAt" IS NULL
+        AND s.status = 'COMPLETED'
+        AND s."creditCustomerId" IS NULL
+        AND s."changeDue" <= 0.009
+        AND s."amountPaid" < s.total - 0.009
+        ${deptClause}
+      ORDER BY s."createdAt" ASC
+      LIMIT ${take}
+    `;
+
+    const changeOwed = changeRows.map((s) => ({
+      id: s.id,
+      clientName: s.clientName,
+      cashier: s.cashier,
+      createdAt: s.createdAt,
+      total: Number(s.total),
+      amountReceived: Number(s.amountReceived),
+      amountPaid: Number(s.amountPaid),
+      changeDue: Number(s.changeDue),
+      balanceDue: 0,
+      kind: 'CHANGE_OWED' as const,
+    }));
+
+    const balanceOwed = balanceRows.map((s) => {
+      const total = Number(s.total);
+      const paid = Number(s.amountPaid);
+      return {
         id: s.id,
         clientName: s.clientName,
         cashier: s.cashier,
         createdAt: s.createdAt,
-        total: Number(s.total),
+        total,
         amountReceived: Number(s.amountReceived),
-        amountPaid: Number(s.amountPaid),
-        changeDue: Number(s.changeDue),
-        balanceDue: 0,
-        kind: 'CHANGE_OWED' as const,
-      }));
-
-    const balanceOwed = rows
-      .filter((s) => {
-        const total = Number(s.total);
-        const paid = Number(s.amountPaid);
-        return Number(s.changeDue) <= 0.009 && total - paid > 0.009;
-      })
-      .slice(0, take)
-      .map((s) => {
-        const total = Number(s.total);
-        const paid = Number(s.amountPaid);
-        return {
-          id: s.id,
-          clientName: s.clientName,
-          cashier: s.cashier,
-          createdAt: s.createdAt,
-          total,
-          amountReceived: Number(s.amountReceived),
-          amountPaid: paid,
-          changeDue: 0,
-          balanceDue: this.round2(total - paid),
-          kind: 'BALANCE_OWED' as const,
-        };
-      });
+        amountPaid: paid,
+        changeDue: 0,
+        balanceDue: this.round2(total - paid),
+        kind: 'BALANCE_OWED' as const,
+      };
+    });
 
     return { changeOwed, balanceOwed };
   }

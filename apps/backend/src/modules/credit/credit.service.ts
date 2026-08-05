@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  BankTransactionType,
   FinanceType,
   PaymentMethod,
   Prisma,
@@ -500,6 +501,10 @@ export class CreditService {
     const method =
       dto.method && dto.method !== PaymentMethod.CREDIT ? dto.method : PaymentMethod.CASH;
 
+    if (method === PaymentMethod.BANK && (dto.bankAccountId == null || dto.bankAccountId < 1)) {
+      throw new BadRequestException('Compte bancaire requis pour un paiement banque');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       let remaining = amount;
       const allocations: Array<{ saleId: number; amount: number }> = [];
@@ -551,14 +556,49 @@ export class CreditService {
         throw new BadRequestException('Aucune créance ouverte à solder pour ce montant');
       }
 
+      let bankAccountId: number | null = null;
+      let bankReference: string | null = null;
+      if (method === PaymentMethod.BANK) {
+        const account = await tx.bankAccount.findFirst({
+          where: {
+            id: dto.bankAccountId!,
+            companyId: customer.companyId,
+            deletedAt: null,
+            isActive: true,
+            bank: { deletedAt: null, isActive: true },
+          },
+          include: { bank: { select: { id: true, name: true } } },
+        });
+        if (!account) {
+          throw new BadRequestException('Compte bancaire introuvable ou inactif');
+        }
+        bankAccountId = account.id;
+        bankReference = dto.reference?.trim() || `${account.bank.name} · ${account.name}`;
+        const saleRef =
+          allocations.length === 1 ? `vente #${allocations[0].saleId}` : 'multi-ventes';
+        await tx.bankTransaction.create({
+          data: {
+            bankAccountId: account.id,
+            type: BankTransactionType.DEPOSIT,
+            amount: applied,
+            description: `Remboursement crédit — ${customer.name} — ${saleRef} — ${account.bank.name} / ${account.name}`,
+            reference: `creditPay:${customer.id}:${Date.now()}`,
+            userId: userId ?? null,
+          },
+        });
+      }
+
       const categoryId = await this.findOrCreateCreditCashCategoryId(tx, customer.companyId);
+      const saleSuffix =
+        allocations.length === 1 ? ` — vente #${allocations[0].saleId}` : '';
       const fe = await tx.financeEntry.create({
         data: {
           type: FinanceType.INCOME,
           amount: applied,
-          description: `Remboursement crédit — ${customer.name}${
-            allocations.length === 1 ? ` — vente #${allocations[0].saleId}` : ''
-          }`,
+          description:
+            method === PaymentMethod.BANK
+              ? `Remboursement crédit banque — ${customer.name}${saleSuffix}`
+              : `Remboursement crédit — ${customer.name}${saleSuffix}`,
           userId: userId ?? null,
           categoryId,
         },
@@ -570,7 +610,8 @@ export class CreditService {
           saleId: allocations.length === 1 ? allocations[0].saleId : dto.saleId ?? null,
           amount: applied,
           method,
-          reference: dto.reference?.trim() || null,
+          reference: bankReference ?? (dto.reference?.trim() || null),
+          bankAccountId,
           note: dto.note?.trim() || null,
           userId: userId ?? null,
           financeEntryId: fe.id,
@@ -582,7 +623,13 @@ export class CreditService {
         action: 'CREDIT_PAYMENT_RECORDED',
         entity: 'CreditPayment',
         entityId: String(payment.id),
-        metadata: { applied, allocations, remainderUnused: remaining },
+        metadata: {
+          applied,
+          allocations,
+          remainderUnused: remaining,
+          method,
+          bankAccountId,
+        },
       });
 
       return {

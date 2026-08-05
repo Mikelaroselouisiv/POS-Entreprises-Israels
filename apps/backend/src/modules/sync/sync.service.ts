@@ -305,7 +305,28 @@ export class SyncService {
     }
 
     await this.resolveForeignKeys(entity, raw);
+    // Ne jamais planter le sync si le nœud source a des colonnes
+    // plus récentes que le Prisma client local (ex. txnNumber avant redeploy).
+    this.stripUnknownScalarFields(entity, raw);
     return raw;
+  }
+
+  private stripUnknownScalarFields(
+    entity: SyncEntityName,
+    data: Record<string, unknown>,
+  ): void {
+    try {
+      const models = Prisma.dmmf.datamodel.models;
+      const model = models.find((m) => m.name === entity);
+      if (!model) return;
+      const allowed = new Set(model.fields.map((f) => f.name));
+      for (const key of Object.keys(data)) {
+        if (key.endsWith('Uuid')) continue;
+        if (!allowed.has(key)) delete data[key];
+      }
+    } catch {
+      /* ignore — best effort */
+    }
   }
 
   /** Remplace les Int source par les ids locaux via les uuid parents. */

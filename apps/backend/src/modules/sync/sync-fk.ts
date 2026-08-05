@@ -183,6 +183,12 @@ export const ENTITY_FK_MAP: Partial<Record<SyncEntityName, SyncFkRef[]>> = {
       parent: 'FinanceEntry',
       required: false,
     },
+    {
+      uuidField: 'bankAccountUuid',
+      idField: 'bankAccountId',
+      parent: 'BankAccount',
+      required: false,
+    },
   ],
   InventorySession: [
     { uuidField: 'departmentUuid', idField: 'departmentId', parent: 'Department', required: true },

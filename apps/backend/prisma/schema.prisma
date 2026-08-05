@@ -702,6 +702,9 @@ model CreditPayment {
   amount           Decimal        @db.Decimal(12, 2)
   method           PaymentMethod  @default(CASH)
   reference        String?
+  /// Compte crédité lorsque method = BANK.
+  bankAccountId    Int?
+  bankAccount      BankAccount?   @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
   note             String?
   userId           Int?
   user             User?          @relation("CreditPaymentUser", fields: [userId], references: [id], onDelete: SetNull)
@@ -713,6 +716,7 @@ model CreditPayment {
 
   @@index([creditCustomerId, createdAt])
   @@index([saleId, createdAt])
+  @@index([bankAccountId])
 }
 
 /// Banque (établissement) où l’entreprise détient des comptes.
@@ -748,6 +752,7 @@ model BankAccount {
   note           String?
   transactions   BankTransaction[]
   payments       Payment[]
+  creditPayments CreditPayment[]
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   deletedAt      DateTime?

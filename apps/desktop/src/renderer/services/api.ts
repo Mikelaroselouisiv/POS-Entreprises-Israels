@@ -1287,7 +1287,8 @@ export async function recordCreditPayment(payload: {
   creditCustomerId: number;
   amount: number;
   saleId?: number;
-  method?: 'CASH' | 'CARD' | 'MOBILE_MONEY';
+  method?: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'BANK';
+  bankAccountId?: number;
   reference?: string;
   note?: string;
 }) {
