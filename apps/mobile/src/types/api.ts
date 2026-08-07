@@ -466,6 +466,8 @@ export interface Delivery {
   id: number;
   uuid: string;
   saleId: number;
+  /** Numéro ticket (= sale.txnNumber), identique à l’impression vente. */
+  saleRef?: number | null;
   companyId: number;
   departmentId?: number | null;
   status: DeliveryStatus;
@@ -481,6 +483,7 @@ export interface Delivery {
   } | null;
   sale?: {
     id: number;
+    txnNumber?: number | null;
     total: number | string;
     clientName?: string | null;
     cashier?: string | null;

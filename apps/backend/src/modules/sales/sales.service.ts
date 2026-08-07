@@ -468,68 +468,95 @@ export class SalesService {
    * Important: on filtre directement les écarts ouverts (pas un échantillon
    * des N plus anciennes ventes, sinon les nouveaux écarts disparaissent
    * dès que l’historique dépasse cette fenêtre).
+   *
+   * Scope entreprise/département : lignes produit OU caisse (Register) —
+   * les Remotes caissiers filtrent souvent par département ; sans le OR
+   * Register, une vente syncée sans SaleItem disparaît du panneau.
+   * On n’utilise pas Sale.clientName dans le SQL (colonne parfois absente
+   * sur un nœud cloud non migré — ça faisait planter /sales/cash-gaps).
    */
   async listCashGaps(opts: { companyId: number; departmentId?: number; take?: number }) {
     const take = Math.min(100, Math.max(1, Math.floor(opts.take ?? 50)));
-    const deptClause =
+    const scopeClause =
       opts.departmentId != null
-        ? Prisma.sql`AND EXISTS (
-            SELECT 1 FROM "SaleItem" si
-            JOIN "Product" p ON p.id = si."productId"
-            WHERE si."saleId" = s.id
-              AND si."deletedAt" IS NULL
-              AND p."companyId" = ${opts.companyId}
-              AND p."departmentId" = ${opts.departmentId}
+        ? Prisma.sql`AND (
+            EXISTS (
+              SELECT 1 FROM "SaleItem" si
+              JOIN "Product" p ON p.id = si."productId"
+              WHERE si."saleId" = s.id
+                AND si."deletedAt" IS NULL
+                AND p."companyId" = ${opts.companyId}
+                AND p."departmentId" = ${opts.departmentId}
+            )
+            OR EXISTS (
+              SELECT 1 FROM "Register" r
+              WHERE r.id = s."registerId"
+                AND r."companyId" = ${opts.companyId}
+                AND r."departmentId" = ${opts.departmentId}
+            )
           )`
-        : Prisma.sql`AND EXISTS (
-            SELECT 1 FROM "SaleItem" si
-            JOIN "Product" p ON p.id = si."productId"
-            WHERE si."saleId" = s.id
-              AND si."deletedAt" IS NULL
-              AND p."companyId" = ${opts.companyId}
+        : Prisma.sql`AND (
+            EXISTS (
+              SELECT 1 FROM "SaleItem" si
+              JOIN "Product" p ON p.id = si."productId"
+              WHERE si."saleId" = s.id
+                AND si."deletedAt" IS NULL
+                AND p."companyId" = ${opts.companyId}
+            )
+            OR EXISTS (
+              SELECT 1 FROM "Register" r
+              WHERE r.id = s."registerId"
+                AND r."companyId" = ${opts.companyId}
+            )
           )`;
 
     type GapRow = {
       id: number;
+      txnNumber: number | null;
       total: Prisma.Decimal | number;
       amountPaid: Prisma.Decimal | number;
       amountReceived: Prisma.Decimal | number;
       changeDue: Prisma.Decimal | number;
-      clientName: string | null;
       cashier: string | null;
       createdAt: Date;
     };
 
     const changeRows = await this.prisma.$queryRaw<GapRow[]>`
-      SELECT s.id, s.total, s."amountPaid", s."amountReceived", s."changeDue",
-             s."clientName", s.cashier, s."createdAt"
+      SELECT s.id, s."txnNumber" AS "txnNumber", s.total, s."amountPaid", s."amountReceived",
+             s."changeDue", s.cashier, s."createdAt"
       FROM "Sale" s
       WHERE s."deletedAt" IS NULL
         AND s.status = 'COMPLETED'
         AND s."creditCustomerId" IS NULL
         AND s."changeDue" > 0.009
-        ${deptClause}
+        ${scopeClause}
       ORDER BY s."createdAt" ASC
       LIMIT ${take}
     `;
 
     const balanceRows = await this.prisma.$queryRaw<GapRow[]>`
-      SELECT s.id, s.total, s."amountPaid", s."amountReceived", s."changeDue",
-             s."clientName", s.cashier, s."createdAt"
+      SELECT s.id, s."txnNumber" AS "txnNumber", s.total, s."amountPaid", s."amountReceived",
+             s."changeDue", s.cashier, s."createdAt"
       FROM "Sale" s
       WHERE s."deletedAt" IS NULL
         AND s.status = 'COMPLETED'
         AND s."creditCustomerId" IS NULL
         AND s."changeDue" <= 0.009
         AND s."amountPaid" < s.total - 0.009
-        ${deptClause}
+        ${scopeClause}
       ORDER BY s."createdAt" ASC
       LIMIT ${take}
     `;
 
+    const clientNames = await this.loadSaleClientNames([
+      ...changeRows.map((s) => s.id),
+      ...balanceRows.map((s) => s.id),
+    ]);
+
     const changeOwed = changeRows.map((s) => ({
       id: s.id,
-      clientName: s.clientName,
+      txnNumber: s.txnNumber ?? s.id,
+      clientName: clientNames.get(s.id) ?? null,
       cashier: s.cashier,
       createdAt: s.createdAt,
       total: Number(s.total),
@@ -545,7 +572,8 @@ export class SalesService {
       const paid = Number(s.amountPaid);
       return {
         id: s.id,
-        clientName: s.clientName,
+        txnNumber: s.txnNumber ?? s.id,
+        clientName: clientNames.get(s.id) ?? null,
         cashier: s.cashier,
         createdAt: s.createdAt,
         total,
@@ -558,6 +586,24 @@ export class SalesService {
     });
 
     return { changeOwed, balanceOwed };
+  }
+
+  /** Best-effort : `Sale.clientName` peut être absente sur un nœud non migré. */
+  private async loadSaleClientNames(ids: number[]): Promise<Map<number, string | null>> {
+    const map = new Map<number, string | null>();
+    const unique = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
+    if (!unique.length) return map;
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ id: number; clientName: string | null }>>`
+        SELECT s.id, s."clientName" AS "clientName"
+        FROM "Sale" s
+        WHERE s.id IN (${Prisma.join(unique)})
+      `;
+      for (const r of rows) map.set(r.id, r.clientName);
+    } catch {
+      /* colonne absente — panneau cash-gaps reste utilisable */
+    }
+    return map;
   }
 
   /** Remet la monnaie due au client (sort les espèces de la caisse). */

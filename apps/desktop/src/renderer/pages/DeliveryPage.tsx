@@ -267,8 +267,8 @@ export function DeliveryPage() {
             className="delivery-search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="N° fiche ou client…"
-            aria-label="Rechercher une fiche"
+            placeholder="N° ticket (vente) ou client…"
+            aria-label="Rechercher par numéro ticket ou client"
           />
           {canFilter ? (
             <>
@@ -371,7 +371,7 @@ export function DeliveryPage() {
                 >
                   <div className="delivery-card-top">
                     <span className="delivery-card-ref">
-                      #{d.sale ? saleTxnNumber(d.sale) : d.saleId}
+                      Vente #{d.saleRef ?? (d.sale ? saleTxnNumber(d.sale) : d.saleId)}
                     </span>
                     <span className="delivery-card-badge">{STATUS_LABEL[d.status]}</span>
                   </div>
@@ -410,7 +410,9 @@ export function DeliveryPage() {
             <div className="delivery-modal-head">
               <div>
                 <div className="delivery-modal-ref">
-                  Vente #{selected.sale ? saleTxnNumber(selected.sale) : selected.saleId}
+                  Vente #
+                  {selected.saleRef ??
+                    (selected.sale ? saleTxnNumber(selected.sale) : selected.saleId)}
                 </div>
                 <div className="delivery-modal-client">
                   {selected.sale?.clientName?.trim() || 'Client'}

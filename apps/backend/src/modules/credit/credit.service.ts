@@ -556,10 +556,13 @@ export class CreditService {
         throw new BadRequestException('Aucune créance ouverte à solder pour ce montant');
       }
 
-      let bankAccountId: number | null = null;
-      let bankReference: string | null = null;
+      let bankAccount: {
+        id: number;
+        name: string;
+        bank: { id: number; name: string };
+      } | null = null;
       if (method === PaymentMethod.BANK) {
-        const account = await tx.bankAccount.findFirst({
+        bankAccount = await tx.bankAccount.findFirst({
           where: {
             id: dto.bankAccountId!,
             companyId: customer.companyId,
@@ -569,23 +572,9 @@ export class CreditService {
           },
           include: { bank: { select: { id: true, name: true } } },
         });
-        if (!account) {
+        if (!bankAccount) {
           throw new BadRequestException('Compte bancaire introuvable ou inactif');
         }
-        bankAccountId = account.id;
-        bankReference = dto.reference?.trim() || `${account.bank.name} · ${account.name}`;
-        const saleRef =
-          allocations.length === 1 ? `vente #${allocations[0].saleId}` : 'multi-ventes';
-        await tx.bankTransaction.create({
-          data: {
-            bankAccountId: account.id,
-            type: BankTransactionType.DEPOSIT,
-            amount: applied,
-            description: `Remboursement crédit — ${customer.name} — ${saleRef} — ${account.bank.name} / ${account.name}`,
-            reference: `creditPay:${customer.id}:${Date.now()}`,
-            userId: userId ?? null,
-          },
-        });
       }
 
       const categoryId = await this.findOrCreateCreditCashCategoryId(tx, customer.companyId);
@@ -604,19 +593,39 @@ export class CreditService {
         },
       });
 
+      const bankReference = bankAccount
+        ? dto.reference?.trim() || `${bankAccount.bank.name} · ${bankAccount.name}`
+        : dto.reference?.trim() || null;
+
       const payment = await tx.creditPayment.create({
         data: {
           creditCustomerId: customer.id,
           saleId: allocations.length === 1 ? allocations[0].saleId : dto.saleId ?? null,
           amount: applied,
           method,
-          reference: bankReference ?? (dto.reference?.trim() || null),
-          bankAccountId,
+          reference: bankReference,
+          bankAccountId: bankAccount?.id ?? null,
           note: dto.note?.trim() || null,
           userId: userId ?? null,
           financeEntryId: fe.id,
         },
       });
+
+      // Dépôt banque après CreditPayment pour une référence stable (sync / réconciliation).
+      if (bankAccount) {
+        const saleRef =
+          allocations.length === 1 ? `vente #${allocations[0].saleId}` : 'multi-ventes';
+        await tx.bankTransaction.create({
+          data: {
+            bankAccountId: bankAccount.id,
+            type: BankTransactionType.DEPOSIT,
+            amount: applied,
+            description: `Remboursement crédit — ${customer.name} — ${saleRef} — ${bankAccount.bank.name} / ${bankAccount.name}`,
+            reference: `creditPayment:${payment.uuid}`,
+            userId: userId ?? null,
+          },
+        });
+      }
 
       await this.auditService.log({
         userId,
@@ -628,7 +637,7 @@ export class CreditService {
           allocations,
           remainderUnused: remaining,
           method,
-          bankAccountId,
+          bankAccountId: bankAccount?.id ?? null,
         },
       });
 

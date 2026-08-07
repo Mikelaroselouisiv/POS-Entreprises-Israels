@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BankTransactionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SyncPushDto, SyncRecordDto } from './dto/sync.dto';
 import {
@@ -82,6 +82,12 @@ export class SyncService {
     for (const record of dto.records) {
       try {
         const action = await this.applyRecord(entity, record);
+        if (
+          (action === 'created' || action === 'updated') &&
+          (entity === 'Payment' || entity === 'CreditPayment')
+        ) {
+          await this.ensureBankDepositForSyncedPayment(entity, record.uuid);
+        }
         results.push({ uuid: record.uuid, action });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -142,9 +148,13 @@ export class SyncService {
     });
     if (existing) {
       if (!this.shouldApplyIncoming(entity, record, existing, incomingAt)) {
+        // Même si LWW ignore le reste, réparer un txnNumber manquant / backfill local erroné.
+        if (entity === 'Sale') {
+          await this.healSaleTxnNumber(existing, record);
+        }
         return 'skipped';
       }
-      await this.updateFromSync(entity, record.uuid, record);
+      await this.updateFromSync(entity, record.uuid, record, { existing });
       return 'updated';
     }
 
@@ -152,10 +162,16 @@ export class SyncService {
     const byNaturalKey = await this.findByNaturalKey(entity, record);
     if (byNaturalKey) {
       if (!this.shouldApplyIncoming(entity, record, byNaturalKey, incomingAt)) {
+        if (entity === 'Sale') {
+          await this.healSaleTxnNumber(byNaturalKey, record);
+        }
         return 'skipped';
       }
       const localUuid = String(byNaturalKey.uuid);
-      await this.updateFromSync(entity, localUuid, record, { adoptUuid: true });
+      await this.updateFromSync(entity, localUuid, record, {
+        adoptUuid: true,
+        existing: byNaturalKey,
+      });
       this.logger.log(
         `Sync ${entity}: fusion clé naturelle ${localUuid} → ${record.uuid}`,
       );
@@ -164,6 +180,69 @@ export class SyncService {
 
     await this.createFromSync(entity, record);
     return 'created';
+  }
+
+  /**
+   * Numéro métier imprimé sur le ticket / carte livraison.
+   * Ne doit jamais être écrasé par l’id local du nœud cible après sync.
+   */
+  private async healSaleTxnNumber(
+    existing: Record<string, unknown>,
+    record: SyncRecordDto,
+  ): Promise<void> {
+    const incoming = Number(record.data?.txnNumber);
+    if (!Number.isFinite(incoming) || incoming <= 0) return;
+    const localId = Number(existing.id);
+    const current =
+      existing.txnNumber == null || existing.txnNumber === ''
+        ? null
+        : Number(existing.txnNumber);
+    const needsHeal =
+      current == null ||
+      !Number.isFinite(current) ||
+      (Number.isFinite(localId) && current === localId && incoming !== localId);
+    if (!needsHeal) return;
+    try {
+      await this.prisma.sale.update({
+        where: { uuid: String(existing.uuid) },
+        data: { txnNumber: incoming },
+      });
+      this.logger.log(
+        `Sync Sale: txnNumber réparé ${String(existing.uuid)} → ${incoming}`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Sync Sale txnNumber heal: ${message}`);
+    }
+  }
+
+  private preserveSaleTxnNumber(
+    data: Record<string, unknown>,
+    existing?: Record<string, unknown> | null,
+  ): void {
+    const incomingRaw = data.txnNumber;
+    const incoming =
+      incomingRaw == null || incomingRaw === '' ? null : Number(incomingRaw);
+    const localId = existing?.id != null ? Number(existing.id) : null;
+    const current =
+      existing?.txnNumber == null || existing?.txnNumber === ''
+        ? null
+        : Number(existing.txnNumber);
+
+    if (incoming == null || !Number.isFinite(incoming) || incoming <= 0) {
+      // Ne jamais nullifier un txnNumber déjà connu.
+      delete data.txnNumber;
+      return;
+    }
+
+    if (
+      current != null &&
+      Number.isFinite(current) &&
+      !(localId != null && current === localId && incoming !== localId)
+    ) {
+      // Déjà un numéro métier stable (≠ simple backfill id local) : immutable.
+      delete data.txnNumber;
+    }
   }
 
   /**
@@ -232,6 +311,14 @@ export class SyncService {
 
   private async createFromSync(entity: SyncEntityName, record: SyncRecordDto) {
     const data = await this.sanitizePayload(entity, record);
+    if (entity === 'Sale') {
+      const txn = Number(data.txnNumber);
+      if (!Number.isFinite(txn) || txn <= 0) {
+        throw new BadRequestException(
+          'Sale sync sans txnNumber — numéro ticket/livraison requis',
+        );
+      }
+    }
     try {
       await this.delegate(entity).create({ data });
     } catch (err) {
@@ -257,13 +344,16 @@ export class SyncService {
     entity: SyncEntityName,
     whereUuid: string,
     record: SyncRecordDto,
-    opts?: { adoptUuid?: boolean },
+    opts?: { adoptUuid?: boolean; existing?: Record<string, unknown> | null },
   ) {
     const data = await this.sanitizePayload(entity, record);
     if (!opts?.adoptUuid) {
       delete data.uuid;
     } else {
       data.uuid = record.uuid;
+    }
+    if (entity === 'Sale') {
+      this.preserveSaleTxnNumber(data, opts?.existing);
     }
     await this.delegate(entity).update({
       where: { uuid: whereUuid },
@@ -379,6 +469,18 @@ export class SyncService {
       data[ref.idField] = null;
     }
 
+    // Paiement banque : ne jamais accepter method=BANK sans compte résolu
+    // (sinon le capital bancaire reste à 0 sur le nœud cible).
+    if (
+      (entity === 'Payment' || entity === 'CreditPayment') &&
+      data.method === 'BANK' &&
+      (data.bankAccountId == null || data.bankAccountId === '')
+    ) {
+      throw new BadRequestException(
+        `${entity} BANK sans bankAccountUuid résolu — sync BankAccount d’abord`,
+      );
+    }
+
     // Nettoyer tout *Uuid résiduel non mappé
     for (const key of Object.keys(data)) {
       if (key.endsWith('Uuid') && key !== 'uuid' && key !== 'clientUuid') {
@@ -456,6 +558,105 @@ export class SyncService {
       else out[k] = v;
     }
     return out;
+  }
+
+  /**
+   * Compense un paiement BANK synchronisé sans dépôt local
+   * (ex. ancien agent qui n’envoyait pas BankTransaction).
+   */
+  private async ensureBankDepositForSyncedPayment(
+    entity: 'Payment' | 'CreditPayment',
+    uuid: string,
+  ): Promise<void> {
+    if (entity === 'Payment') {
+      const payment = await this.prisma.payment.findUnique({
+        where: { uuid },
+        include: {
+          sale: { select: { id: true, txnNumber: true, status: true, deletedAt: true } },
+          bankAccount: {
+            select: { id: true, name: true, bank: { select: { name: true } } },
+          },
+        },
+      });
+      if (
+        !payment ||
+        payment.deletedAt ||
+        payment.method !== 'BANK' ||
+        payment.bankAccountId == null ||
+        !payment.bankAccount ||
+        payment.sale.deletedAt ||
+        payment.sale.status !== 'COMPLETED' ||
+        Number(payment.amount) <= 0.009
+      ) {
+        return;
+      }
+      const txnRef =
+        payment.sale.txnNumber != null
+          ? `saleTxn:${payment.sale.txnNumber}`
+          : `sale:${payment.saleId}`;
+      const refs = [`sale:${payment.saleId}`, txnRef];
+      const existing = await this.prisma.bankTransaction.findFirst({
+        where: {
+          deletedAt: null,
+          type: BankTransactionType.DEPOSIT,
+          reference: { in: refs },
+        },
+        select: { id: true },
+      });
+      if (existing) return;
+      await this.prisma.bankTransaction.create({
+        data: {
+          bankAccountId: payment.bankAccountId,
+          type: BankTransactionType.DEPOSIT,
+          amount: payment.amount,
+          description: `Vente #${payment.sale.txnNumber ?? payment.saleId} — ${payment.bankAccount.bank.name} / ${payment.bankAccount.name}`,
+          reference: txnRef,
+          occurredAt: payment.createdAt,
+        },
+      });
+      return;
+    }
+
+    const creditPay = await this.prisma.creditPayment.findUnique({
+      where: { uuid },
+      include: {
+        creditCustomer: { select: { name: true } },
+        bankAccount: {
+          select: { id: true, name: true, bank: { select: { name: true } } },
+        },
+      },
+    });
+    if (
+      !creditPay ||
+      creditPay.deletedAt ||
+      creditPay.method !== 'BANK' ||
+      creditPay.bankAccountId == null ||
+      !creditPay.bankAccount ||
+      Number(creditPay.amount) <= 0.009
+    ) {
+      return;
+    }
+    const ref = `creditPayment:${creditPay.uuid}`;
+    const existing = await this.prisma.bankTransaction.findFirst({
+      where: {
+        deletedAt: null,
+        type: BankTransactionType.DEPOSIT,
+        reference: ref,
+      },
+      select: { id: true },
+    });
+    if (existing) return;
+    await this.prisma.bankTransaction.create({
+      data: {
+        bankAccountId: creditPay.bankAccountId,
+        type: BankTransactionType.DEPOSIT,
+        amount: creditPay.amount,
+        description: `Remboursement crédit — ${creditPay.creditCustomer.name} — ${creditPay.bankAccount.bank.name} / ${creditPay.bankAccount.name}`,
+        reference: ref,
+        occurredAt: creditPay.createdAt,
+        userId: creditPay.userId,
+      },
+    });
   }
 
   private delegate(entity: SyncEntityName): Delegate {

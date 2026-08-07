@@ -449,7 +449,9 @@ export function PosPage() {
       });
       setCashGaps(gaps);
     } catch {
-      // silencieux : panneau secondaire
+      setCashGaps({ changeOwed: [], balanceOwed: [] });
+      // Visible sur Remote : avant, une erreur API (cloud) laissait « Aucune » sans explication.
+      setStatus('Impossible de charger monnaie / restes à encaisser', { persist: true });
     }
   }
 
@@ -1441,7 +1443,8 @@ export function PosPage() {
                   {cashGaps.changeOwed.map((row) => (
                     <li key={`c-${row.id}`}>
                       <div>
-                        <strong>#{row.id}</strong> {row.clientName?.trim() || 'Client'}
+                        <strong>#{row.txnNumber ?? row.id}</strong>{' '}
+                        {row.clientName?.trim() || 'Client'}
                         <div className="dept-hint">{formatMoney(row.changeDue)}</div>
                       </div>
                       <button
@@ -1466,7 +1469,8 @@ export function PosPage() {
                   {cashGaps.balanceOwed.map((row) => (
                     <li key={`b-${row.id}`}>
                       <div>
-                        <strong>#{row.id}</strong> {row.clientName?.trim() || 'Client'}
+                        <strong>#{row.txnNumber ?? row.id}</strong>{' '}
+                        {row.clientName?.trim() || 'Client'}
                         <div className="dept-hint">{formatMoney(row.balanceDue)}</div>
                       </div>
                       <button

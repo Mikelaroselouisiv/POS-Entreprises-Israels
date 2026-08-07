@@ -398,6 +398,8 @@ export interface CreateSalePayload {
 
 export interface SaleCashGapRow {
   id: number;
+  /** Numéro ticket / livraison (stable après sync). */
+  txnNumber?: number;
   clientName?: string | null;
   cashier?: string | null;
   createdAt: string;
@@ -486,6 +488,8 @@ export interface Delivery {
   id: number;
   uuid: string;
   saleId: number;
+  /** Numéro imprimé sur le ticket (= sale.txnNumber) — à utiliser pour retrouver la fiche. */
+  saleRef?: number | null;
   companyId: number;
   departmentId?: number | null;
   status: DeliveryStatus;

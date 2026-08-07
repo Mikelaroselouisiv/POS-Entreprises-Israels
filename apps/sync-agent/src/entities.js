@@ -13,6 +13,9 @@ export const ENTITY_ORDER = [
   'User',
   'ExpenseCategory',
   'CreditCustomer',
+  // Banques avant Payment / CreditPayment / BankTransaction (FK bankAccountId).
+  'Bank',
+  'BankAccount',
   'ProductFamily',
   'ProductFamilyTier',
   'Product',
@@ -28,6 +31,8 @@ export const ENTITY_ORDER = [
   'StockMovement',
   'FinanceEntry',
   'CreditPayment',
+  // Dépôts POS/crédit : après comptes + paiements.
+  'BankTransaction',
   'InventorySession',
   'InventoryLine',
   'PurchaseOrder',

@@ -185,7 +185,9 @@ export function DeliveriesListScreen({ status }: Props) {
         renderItem={({ item }) => (
           <Pressable style={styles.card} onPress={() => void openDetail(item)}>
             <View style={styles.cardTop}>
-              <Text style={styles.cardRef}>#{item.sale?.id ?? item.saleId}</Text>
+              <Text style={styles.cardRef}>
+                Vente #{item.saleRef ?? item.sale?.txnNumber ?? item.sale?.id ?? item.saleId}
+              </Text>
               <View style={[styles.badge, { backgroundColor: `${STATUS_COLOR[item.status]}22` }]}>
                 <Text style={[styles.badgeText, { color: STATUS_COLOR[item.status] }]}>
                   {STATUS_LABEL[item.status]}
@@ -220,7 +222,11 @@ export function DeliveriesListScreen({ status }: Props) {
               ListHeaderComponent={
                 <View style={styles.detailHeader}>
                   <Text style={styles.detailTitle}>
-                    Vente #{detail.sale?.id ?? detail.saleId}
+                    Vente #
+                    {detail.saleRef ??
+                      detail.sale?.txnNumber ??
+                      detail.sale?.id ??
+                      detail.saleId}
                   </Text>
                   <Text style={styles.client}>{detail.sale?.clientName?.trim() || 'Client'}</Text>
                   <Text style={styles.meta}>

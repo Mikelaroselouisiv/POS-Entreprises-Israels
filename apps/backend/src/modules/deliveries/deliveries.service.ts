@@ -50,6 +50,12 @@ const deliveryInclude = {
   },
 } satisfies Prisma.DeliveryInclude;
 
+/** Numéro métier ticket = carte livraison (stable après sync). */
+function saleRefOf(sale?: { id: number; txnNumber?: number | null } | null, saleId?: number) {
+  if (sale) return sale.txnNumber ?? sale.id;
+  return saleId ?? null;
+}
+
 @Injectable()
 export class DeliveriesService {
   constructor(
@@ -232,7 +238,12 @@ export class DeliveriesService {
       ]);
     }
 
-    return { items: rows, total, skip, take };
+    return {
+      items: rows.map((d) => this.withSaleRef(d)),
+      total,
+      skip,
+      take,
+    };
   }
 
   async findOne(id: number, user: ScopeUser) {
@@ -242,7 +253,17 @@ export class DeliveriesService {
     });
     if (!delivery) throw new NotFoundException('Livraison introuvable');
     this.assertCanAccess(user, delivery.companyId, delivery.departmentId);
-    return delivery;
+    return this.withSaleRef(delivery);
+  }
+
+  /** Expose `saleRef` (= numéro imprimé sur le ticket) pour l’UI livraison. */
+  private withSaleRef<T extends { saleId: number; sale?: { id: number; txnNumber?: number | null } | null }>(
+    delivery: T,
+  ) {
+    return {
+      ...delivery,
+      saleRef: saleRefOf(delivery.sale, delivery.saleId),
+    };
   }
 
   async update(id: number, dto: UpdateDeliveryDto, user: ScopeUser) {
@@ -339,7 +360,7 @@ export class DeliveriesService {
           },
         });
 
-        return updated;
+        return this.withSaleRef(updated);
       },
       { timeout: 30000, maxWait: 10000 },
     );
