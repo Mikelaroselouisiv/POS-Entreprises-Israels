@@ -511,6 +511,7 @@ export class SalesService {
    */
   async listCashGaps(opts: { companyId: number; departmentId?: number; take?: number }) {
     const take = Math.min(100, Math.max(1, Math.floor(opts.take ?? 50)));
+    // Register n’a PAS companyId : entreprise via Store (ou Department).
     const scopeClause =
       opts.departmentId != null
         ? Prisma.sql`AND (
@@ -524,8 +525,9 @@ export class SalesService {
             )
             OR EXISTS (
               SELECT 1 FROM "Register" r
+              JOIN "Store" st ON st.id = r."storeId"
               WHERE r.id = s."registerId"
-                AND r."companyId" = ${opts.companyId}
+                AND st."companyId" = ${opts.companyId}
                 AND r."departmentId" = ${opts.departmentId}
             )
           )`
@@ -539,8 +541,9 @@ export class SalesService {
             )
             OR EXISTS (
               SELECT 1 FROM "Register" r
+              JOIN "Store" st ON st.id = r."storeId"
               WHERE r.id = s."registerId"
-                AND r."companyId" = ${opts.companyId}
+                AND st."companyId" = ${opts.companyId}
             )
           )`;
 

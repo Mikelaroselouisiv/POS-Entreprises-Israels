@@ -198,9 +198,26 @@ export class AccountingPostingService {
 
   /** Poste sans faire échouer l’opération métier (log d’erreur). */
   async tryPostEntry(input: PostEntryInput, db: Db = this.prisma): Promise<void> {
+    // Sous Postgres, une requête SQL en échec abort toute la transaction parente
+    // (ex. vente POS). Un SAVEPOINT isole la compta pour ne pas bloquer l’encaissement.
+    const sp = `acct_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const useSavepoint = db !== this.prisma;
     try {
+      if (useSavepoint) {
+        await db.$executeRawUnsafe(`SAVEPOINT ${sp}`);
+      }
       await this.postEntry({ ...input, skipIfExists: true }, db);
+      if (useSavepoint) {
+        await db.$executeRawUnsafe(`RELEASE SAVEPOINT ${sp}`);
+      }
     } catch (err) {
+      if (useSavepoint) {
+        try {
+          await db.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${sp}`);
+        } catch {
+          /* ignore */
+        }
+      }
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Compta non postée [${input.source}:${input.sourceId}]: ${msg}`);
     }
