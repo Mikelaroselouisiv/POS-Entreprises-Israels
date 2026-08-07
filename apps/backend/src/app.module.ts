@@ -12,6 +12,7 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { PackagingModule } from './modules/packaging/packaging.module';
 import { PurchasingModule } from './modules/purchasing/purchasing.module';
 import { RecipesModule } from './modules/recipes/recipes.module';
+import { AccountingModule } from './modules/accounting/accounting.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -52,6 +53,7 @@ import { PrismaModule } from './prisma/prisma.module';
     DepartmentsModule,
     StoresModule,
     FinanceModule,
+    AccountingModule,
     PurchasingModule,
     RecipesModule,
     SyncModule,

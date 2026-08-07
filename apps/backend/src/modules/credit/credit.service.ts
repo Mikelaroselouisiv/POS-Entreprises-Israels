@@ -12,6 +12,7 @@ import {
 import { resolveFamilyUnitPrice, resolveVolumeUnitPrice } from '../../common/utils/volume-unit-price';
 import { USER_ATTRIBUTION_SELECT } from '../../common/user-attribution';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountingPostingService } from '../accounting/accounting-posting.service';
 import { AuditService } from '../audit/audit.service';
 import { DeliveriesService } from '../deliveries/deliveries.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -31,6 +32,7 @@ export class CreditService {
     private readonly inventoryService: InventoryService,
     private readonly auditService: AuditService,
     private readonly deliveriesService: DeliveriesService,
+    private readonly accountingPosting: AccountingPostingService,
   ) {}
 
   private round2(n: number) {
@@ -437,6 +439,11 @@ export class CreditService {
         })),
       });
 
+      const downMethod =
+        dto.downPaymentMethod && dto.downPaymentMethod !== PaymentMethod.CREDIT
+          ? dto.downPaymentMethod
+          : PaymentMethod.CASH;
+
       // Acompte → journal entreprise « Encaissements crédit » (hors caisse POS).
       if (down > 0.009) {
         const categoryId = await this.findOrCreateCreditCashCategoryId(tx, customer.companyId);
@@ -454,16 +461,37 @@ export class CreditService {
             creditCustomerId: customer.id,
             saleId: sale.id,
             amount: down,
-            method:
-              dto.downPaymentMethod && dto.downPaymentMethod !== PaymentMethod.CREDIT
-                ? dto.downPaymentMethod
-                : PaymentMethod.CASH,
+            method: downMethod,
             note: 'Acompte à l’achat',
             userId: userId ?? null,
             financeEntryId: fe.id,
           },
         });
       }
+
+      const costRows = await tx.saleItem.findMany({
+        where: { saleId: sale.id },
+        select: { baseQuantity: true, product: { select: { cost: true } } },
+      });
+      const cogs = costRows.reduce(
+        (s, it) => s + Number(it.baseQuantity) * Number(it.product.cost ?? 0),
+        0,
+      );
+
+      await this.accountingPosting.postCreditSale(
+        {
+          companyId: customer.companyId,
+          saleId: sale.id,
+          entryDate: new Date(),
+          total,
+          downPayment: down,
+          downMethod,
+          cogs,
+          customerName: customer.name,
+          createdById: userId,
+        },
+        tx,
+      );
 
       await this.auditService.log({
         userId,
@@ -626,6 +654,19 @@ export class CreditService {
           },
         });
       }
+
+      await this.accountingPosting.postCreditPayment(
+        {
+          companyId: customer.companyId,
+          paymentId: payment.id,
+          entryDate: new Date(),
+          amount: applied,
+          method,
+          customerName: customer.name,
+          createdById: userId,
+        },
+        tx,
+      );
 
       await this.auditService.log({
         userId,

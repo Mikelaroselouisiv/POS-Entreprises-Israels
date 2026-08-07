@@ -16,10 +16,14 @@ export function DefaultRedirect() {
   if (canPerm('dashboard.view')) {
     return <Navigate to="/app/dashboard" replace />;
   }
+  if (canPerm('accounting.view') && user.role === 'ACCOUNTANT') {
+    return <Navigate to="/app/comptabilite" replace />;
+  }
   if (canPerm('pos.use')) return <Navigate to="/app/pos" replace />;
   if (canPerm('deliveries.view')) return <Navigate to="/app/livraisons" replace />;
   if (canPerm('stock.view')) return <Navigate to="/app/stock" replace />;
   if (canPerm('credit.view')) return <Navigate to="/app/credit" replace />;
+  if (canPerm('accounting.view')) return <Navigate to="/app/comptabilite" replace />;
   if (canPerm('config.view')) return <Navigate to="/app/config" replace />;
   return <Navigate to="/app/pos" replace />;
 }

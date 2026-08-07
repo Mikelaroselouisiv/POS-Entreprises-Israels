@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { USER_ATTRIBUTION_SELECT } from '../../common/user-attribution';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountingPostingService } from '../accounting/accounting-posting.service';
 import { AuditService } from '../audit/audit.service';
 import type {
   CreateGoodsReceiptDto,
@@ -28,6 +29,7 @@ export class PurchasingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly accountingPosting: AccountingPostingService,
   ) {}
 
   private sumReceivedByProduct(
@@ -587,6 +589,22 @@ export class PurchasingService {
           data: { status: PurchaseOrderStatus.CLOSED },
         });
       }
+
+      const amount = gr.lines.reduce(
+        (s, l) => s + Number(l.quantity) * Number(l.unitCost),
+        0,
+      );
+      await this.accountingPosting.postPurchaseReceipt(
+        {
+          companyId: po.companyId,
+          goodsReceiptId: id,
+          entryDate: gr.receivedAt ?? new Date(),
+          amount,
+          supplierName: po.supplierName,
+          createdById: userId,
+        },
+        tx,
+      );
     });
 
     const posted = await this.getGoodsReceipt(id);

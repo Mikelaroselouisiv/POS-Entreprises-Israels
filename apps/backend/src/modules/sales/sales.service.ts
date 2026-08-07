@@ -3,6 +3,7 @@ import { BankTransactionType, FinanceType, MovementType, PaymentMethod, Prisma }
 import { permissionsSatisfy } from '../../common/permissions';
 import { resolveFamilyUnitPrice, resolveVolumeUnitPrice } from '../../common/utils/volume-unit-price';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountingPostingService } from '../accounting/accounting-posting.service';
 import { AuditService } from '../audit/audit.service';
 import { DeliveriesService } from '../deliveries/deliveries.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -19,6 +20,7 @@ export class SalesService {
     private readonly auditService: AuditService,
     private readonly deliveriesService: DeliveriesService,
     private readonly rolesService: RolesService,
+    private readonly accountingPosting: AccountingPostingService,
   ) {}
 
   async create(
@@ -375,6 +377,38 @@ export class SalesService {
             saleId,
           },
         });
+      }
+
+      // Comptabilité en partie double (si exercice ouvert + plan initialisé).
+      if (firstCompanyId != null) {
+        const cashAmount = appliedPayments
+          .filter((p) => p.method !== PaymentMethod.CREDIT && p.method !== PaymentMethod.BANK)
+          .reduce((acc, p) => acc + p.amount, 0);
+        const bankAmount = appliedPayments
+          .filter((p) => p.method === PaymentMethod.BANK)
+          .reduce((acc, p) => acc + p.amount, 0);
+        const costRows = await tx.saleItem.findMany({
+          where: { saleId },
+          select: { baseQuantity: true, product: { select: { cost: true } } },
+        });
+        const cogs = costRows.reduce(
+          (s, it) => s + Number(it.baseQuantity) * Number(it.product.cost ?? 0),
+          0,
+        );
+        await this.accountingPosting.postPosSale(
+          {
+            companyId: firstCompanyId,
+            saleId,
+            entryDate: new Date(),
+            total,
+            cashAmount,
+            bankAmount,
+            cogs,
+            createdById: userId,
+            txnLabel: `#${txnNumber}`,
+          },
+          tx,
+        );
       }
 
       if (clientNameRaw !== null) {
@@ -743,7 +777,7 @@ export class SalesService {
   async cancelSale(id: number, userId?: number) {
     const sale = await this.prisma.sale.findFirst({
       where: { id, deletedAt: null },
-      include: { items: true },
+      include: { items: { include: { product: { select: { companyId: true } } } } },
     });
     if (!sale) {
       throw new NotFoundException('Sale not found');
@@ -755,6 +789,11 @@ export class SalesService {
       await this.reverseDeliveredStockForSale(tx, id, userId, 'Annulation vente');
       await this.reverseBankDepositsForSale(tx, id);
       await tx.financeEntry.deleteMany({ where: { saleId: id } });
+      const companyId = sale.items[0]?.product?.companyId;
+      if (companyId != null) {
+        await this.accountingPosting.voidBySource(companyId, 'SALE', String(id), tx);
+        await this.accountingPosting.voidBySource(companyId, 'SALE_COGS', String(id), tx);
+      }
       const updated = await tx.sale.update({
         where: { id },
         data: { status: 'CANCELLED' },
@@ -772,7 +811,7 @@ export class SalesService {
   async refundSale(id: number, userId?: number) {
     const sale = await this.prisma.sale.findFirst({
       where: { id, deletedAt: null },
-      include: { items: true },
+      include: { items: { include: { product: { select: { companyId: true } } } } },
     });
     if (!sale) {
       throw new NotFoundException('Sale not found');
@@ -784,6 +823,11 @@ export class SalesService {
       await this.reverseDeliveredStockForSale(tx, id, userId, 'Remboursement vente');
       await this.reverseBankDepositsForSale(tx, id);
       await tx.financeEntry.deleteMany({ where: { saleId: id } });
+      const companyId = sale.items[0]?.product?.companyId;
+      if (companyId != null) {
+        await this.accountingPosting.voidBySource(companyId, 'SALE', String(id), tx);
+        await this.accountingPosting.voidBySource(companyId, 'SALE_COGS', String(id), tx);
+      }
       const updated = await tx.sale.update({
         where: { id },
         data: { status: 'REFUNDED' },

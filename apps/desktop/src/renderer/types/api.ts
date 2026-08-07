@@ -786,3 +786,183 @@ export interface BankTransactionRow {
     bank: { id: number; name: string };
   };
 }
+
+/** ——— Comptabilité (partie double PCG) ——— */
+
+export type FiscalYearStatus = 'OPEN' | 'CLOSED';
+export type JournalCode = 'VE' | 'AC' | 'BQ' | 'CA' | 'OD' | 'AN';
+
+export interface AccountRow {
+  id: number;
+  code: string;
+  name: string;
+  classNumber: number;
+  nature: 'BALANCE_SHEET' | 'INCOME_STATEMENT';
+  isDebitNormal: boolean;
+  systemKey?: string | null;
+  isSystem: boolean;
+  isActive: boolean;
+}
+
+export interface FiscalYearRow {
+  id: number;
+  companyId?: number;
+  label: string;
+  /** YYYY-MM-DD (ou ISO) */
+  startDate: string;
+  /** YYYY-MM-DD (ou ISO) */
+  endDate: string;
+  status: FiscalYearStatus;
+  closedAt?: string | null;
+  closedBy?: { id: number; fullName: string | null; phone: string } | null;
+  _count?: { entries: number };
+}
+
+export interface JournalLineRow {
+  id: number;
+  debit: string | number;
+  credit: string | number;
+  label?: string | null;
+  account: { id: number; code: string; name: string };
+}
+
+export interface JournalEntryRow {
+  id: number;
+  entryDate: string;
+  journalCode: JournalCode;
+  entryNumber: number;
+  description: string;
+  reference?: string | null;
+  source: string;
+  lines: JournalLineRow[];
+  createdBy?: { id: number; fullName: string | null; phone: string } | null;
+}
+
+export interface AccountingOverview {
+  openFiscalYear: FiscalYearRow | null;
+  fiscalYears: FiscalYearRow[];
+  accountCount: number;
+  entryCount: number;
+}
+
+export interface AccountBalanceRow {
+  accountId: number;
+  code: string;
+  name: string;
+  classNumber: number;
+  nature: 'BALANCE_SHEET' | 'INCOME_STATEMENT';
+  debit: number;
+  credit: number;
+  balance: number;
+  balanceSide: 'debit' | 'credit' | 'zero';
+}
+
+export interface TrialBalanceReport {
+  fiscalYear: { id: number; label: string; status: string };
+  dateFrom: string;
+  dateTo: string;
+  rows: AccountBalanceRow[];
+  totals: { debit: number; credit: number };
+  balanceTotals?: { debit: number; credit: number };
+  balanced?: boolean;
+}
+
+export interface BalanceSheetReport {
+  fiscalYear: { id: number; label: string; status: string };
+  dateFrom: string;
+  dateTo: string;
+  actif: AccountBalanceRow[];
+  passif: AccountBalanceRow[];
+  totalActif: number;
+  totalPassif: number;
+  balanced: boolean;
+  resultatEnCours: number;
+}
+
+export interface IncomeStatementReport {
+  fiscalYear: { id: number; label: string; status: string };
+  dateFrom: string;
+  dateTo: string;
+  charges: AccountBalanceRow[];
+  produits: AccountBalanceRow[];
+  totalCharges: number;
+  totalProduits: number;
+  resultat: number;
+  resultatLabel: string;
+}
+
+export interface GeneralLedgerReport {
+  fiscalYear: { id: number; label: string; status: string };
+  dateFrom: string;
+  dateTo: string;
+  account: { id: number; code: string; name: string; classNumber: number };
+  movements: Array<{
+    entryId: number;
+    entryDate: string;
+    journalCode: JournalCode;
+    entryNumber: number;
+    description: string;
+    label?: string | null;
+    debit: number;
+    credit: number;
+    balance: number;
+  }>;
+  closingBalance: number;
+}
+
+export interface AccountingBackfillResult {
+  fiscalYear: { id: number; label: string; startDate: string; endDate: string };
+  posted: {
+    sales: number;
+    creditSales: number;
+    creditPayments: number;
+    expenses: number;
+    purchases: number;
+    bankManual: number;
+    supplierPayments: number;
+    fixedAssets: number;
+    depreciations: number;
+  };
+  skipped: {
+    outsidePeriod: number;
+    alreadyPosted: number;
+    other: number;
+  };
+}
+
+export interface SupplierPaymentRow {
+  id: number;
+  supplierName: string;
+  amount: string | number;
+  method: string;
+  paidAt: string;
+  note?: string | null;
+  bankAccount?: {
+    id: number;
+    name: string;
+    bank: { name: string };
+  } | null;
+  user?: { id: number; fullName: string | null; phone: string } | null;
+}
+
+export interface AccountingSuppliersOverview {
+  suppliersPayable: number;
+  supplierNames: string[];
+  payments: SupplierPaymentRow[];
+}
+
+export interface FixedAssetRow {
+  id: number;
+  name: string;
+  acquisitionDate: string;
+  acquisitionCost: number;
+  residualValue: number;
+  usefulLifeMonths: number;
+  accumulatedDepreciation: number;
+  lastDepreciationPeriod: string | null;
+  isActive: boolean;
+  note: string | null;
+  monthlyDepreciation: number;
+  netBookValue: number;
+  remainingDepreciable: number;
+}

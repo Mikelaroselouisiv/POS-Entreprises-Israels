@@ -15,6 +15,7 @@ import {
   ymdToBusinessNoon,
 } from '../../common/utils/business-timezone';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountingPostingService } from '../accounting/accounting-posting.service';
 import { AuditService } from '../audit/audit.service';
 import { PurchasingService } from '../purchasing/purchasing.service';
 import { SalesService } from '../sales/sales.service';
@@ -39,6 +40,7 @@ export class FinanceService {
     private readonly auditService: AuditService,
     private readonly purchasingService: PurchasingService,
     private readonly salesService: SalesService,
+    private readonly accountingPosting: AccountingPostingService,
   ) {}
 
   private ymdToDateStart(ymd: string): Date {
@@ -323,6 +325,18 @@ export class FinanceService {
         ...(createdAt != null ? { createdAt } : {}),
       },
     });
+
+    if (companyId != null && dto.type === FinanceType.EXPENSE) {
+      await this.accountingPosting.postExpense({
+        companyId,
+        financeEntryId: entry.id,
+        entryDate: createdAt ?? entry.createdAt,
+        amount: Number(dto.amount),
+        description: dto.description,
+        createdById: userId,
+      });
+    }
+
     await this.auditService.log({
       userId,
       action: 'FINANCE_ENTRY_CREATED',

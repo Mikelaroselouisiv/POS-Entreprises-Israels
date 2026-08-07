@@ -1,6 +1,7 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { AppLayout } from './layout/AppLayout';
+import { AccountingPage } from './pages/AccountingPage';
 import { ConfigPage } from './pages/ConfigPage';
 import { CreditPage } from './pages/CreditPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -64,6 +65,14 @@ export default function App() {
               element={
                 <RequirePermission permission="deliveries.view">
                   <DeliveryPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="comptabilite"
+              element={
+                <RequirePermission permission="accounting.view">
+                  <AccountingPage />
                 </RequirePermission>
               }
             />

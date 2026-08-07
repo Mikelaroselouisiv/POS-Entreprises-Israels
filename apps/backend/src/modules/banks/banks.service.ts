@@ -7,6 +7,7 @@ import { BankTransactionType, Prisma } from '@prisma/client';
 import { USER_ATTRIBUTION_SELECT } from '../../common/user-attribution';
 import { ymdToDateStart } from '../../common/time/timezone';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountingPostingService } from '../accounting/accounting-posting.service';
 import { AuditService } from '../audit/audit.service';
 import {
   CreateBankAccountDto,
@@ -21,6 +22,7 @@ export class BanksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly accountingPosting: AccountingPostingService,
   ) {}
 
   private round2(n: number) {
@@ -304,6 +306,16 @@ export class BanksService {
           },
         },
       },
+    });
+
+    await this.accountingPosting.postBankTransaction({
+      companyId: account.companyId,
+      transactionId: row.id,
+      entryDate: occurredAt,
+      amount,
+      type: dto.type,
+      description: dto.description.trim(),
+      createdById: userId,
     });
 
     await this.auditService.log({

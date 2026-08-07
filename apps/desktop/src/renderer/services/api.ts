@@ -1112,6 +1112,302 @@ export async function createFinanceEntry(payload: {
   return data;
 }
 
+/* ——— Comptabilité ——— */
+
+export async function getAccountingOverview(companyId: number) {
+  const { data } = await api.get<import('../types/api').AccountingOverview>('/accounting/overview', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function getAccountingAccounts(companyId: number) {
+  const { data } = await api.get<import('../types/api').AccountRow[]>('/accounting/accounts', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function ensureAccountingChart(companyId: number) {
+  const { data } = await api.post<import('../types/api').AccountRow[]>('/accounting/accounts/ensure', {
+    companyId,
+  });
+  return data;
+}
+
+export async function createAccountingAccount(payload: {
+  companyId: number;
+  code: string;
+  name: string;
+  classNumber: number;
+}) {
+  const { data } = await api.post<import('../types/api').AccountRow>('/accounting/accounts', payload);
+  return data;
+}
+
+export async function updateAccountingAccount(
+  id: number,
+  payload: {
+    code?: string;
+    name?: string;
+    classNumber?: number;
+    nature?: 'BALANCE_SHEET' | 'INCOME_STATEMENT';
+    isDebitNormal?: boolean;
+    isActive?: boolean;
+  },
+) {
+  const { data } = await api.patch<import('../types/api').AccountRow>(
+    `/accounting/accounts/${id}`,
+    payload,
+  );
+  return data;
+}
+
+export async function removeAccountingAccount(id: number) {
+  const { data } = await api.delete<{
+    account: import('../types/api').AccountRow;
+    action: 'deleted' | 'deactivated';
+    message: string;
+  }>(`/accounting/accounts/${id}`);
+  return data;
+}
+
+export async function getFiscalYears(companyId: number) {
+  const { data } = await api.get<import('../types/api').FiscalYearRow[]>('/accounting/fiscal-years', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function createFiscalYear(payload: {
+  companyId: number;
+  label: string;
+  startDate: string;
+  endDate: string;
+}) {
+  const { data } = await api.post<import('../types/api').FiscalYearRow>(
+    '/accounting/fiscal-years',
+    payload,
+  );
+  return data;
+}
+
+export async function closeFiscalYear(id: number) {
+  const { data } = await api.post<{
+    fiscalYear: import('../types/api').FiscalYearRow;
+    resultat: number;
+  }>(`/accounting/fiscal-years/${id}/close`);
+  return data;
+}
+
+export async function getAccountingJournal(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  journalCode?: string;
+  skip?: number;
+  take?: number;
+}) {
+  const { data } = await api.get<{
+    items: import('../types/api').JournalEntryRow[];
+    total: number;
+    fiscalYear: import('../types/api').FiscalYearRow | null;
+  }>('/accounting/journal', { params });
+  return data;
+}
+
+export async function createManualJournalEntry(payload: {
+  companyId: number;
+  entryDate: string;
+  journalCode?: string;
+  description: string;
+  reference?: string;
+  lines: Array<{ accountCode: string; debit?: number; credit?: number; label?: string }>;
+}) {
+  const { data } = await api.post<import('../types/api').JournalEntryRow>(
+    '/accounting/journal',
+    payload,
+  );
+  return data;
+}
+
+export async function getTrialBalance(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const { data } = await api.get<import('../types/api').TrialBalanceReport>(
+    '/accounting/trial-balance',
+    { params },
+  );
+  return data;
+}
+
+export async function getBalanceSheet(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateTo?: string;
+}) {
+  const { data } = await api.get<import('../types/api').BalanceSheetReport>(
+    '/accounting/balance-sheet',
+    { params },
+  );
+  return data;
+}
+
+export async function getIncomeStatement(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const { data } = await api.get<import('../types/api').IncomeStatementReport>(
+    '/accounting/income-statement',
+    { params },
+  );
+  return data;
+}
+
+export async function getGeneralLedger(params: {
+  companyId: number;
+  accountId?: number;
+  accountCode?: string;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const { data } = await api.get<import('../types/api').GeneralLedgerReport>(
+    '/accounting/general-ledger',
+    { params },
+  );
+  return data;
+}
+
+async function accountingPdf(path: string, params: Record<string, string | number | undefined>) {
+  const { data } = await api.get<Blob>(path, { params, responseType: 'blob' });
+  return data;
+}
+
+export function exportAccountingTrialBalancePdf(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  return accountingPdf('/accounting/export/trial-balance/pdf', params);
+}
+
+export function exportAccountingBalanceSheetPdf(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateTo?: string;
+}) {
+  return accountingPdf('/accounting/export/balance-sheet/pdf', params);
+}
+
+export function exportAccountingIncomeStatementPdf(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  return accountingPdf('/accounting/export/income-statement/pdf', params);
+}
+
+export function exportAccountingJournalPdf(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  return accountingPdf('/accounting/export/journal/pdf', params);
+}
+
+export function exportAccountingGeneralLedgerPdf(params: {
+  companyId: number;
+  accountId?: number;
+  accountCode?: string;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  return accountingPdf('/accounting/export/general-ledger/pdf', params);
+}
+
+export async function backfillAccounting(companyId: number) {
+  const { data } = await api.post<import('../types/api').AccountingBackfillResult>(
+    '/accounting/backfill',
+    { companyId },
+  );
+  return data;
+}
+
+export async function getAccountingSuppliers(companyId: number) {
+  const { data } = await api.get<import('../types/api').AccountingSuppliersOverview>(
+    '/accounting/suppliers',
+    { params: { companyId } },
+  );
+  return data;
+}
+
+export async function createSupplierPayment(payload: {
+  companyId: number;
+  supplierName: string;
+  amount: number;
+  method?: 'CASH' | 'BANK';
+  bankAccountId?: number;
+  paidOn?: string;
+  note?: string;
+}) {
+  const { data } = await api.post('/accounting/suppliers/payments', payload);
+  return data;
+}
+
+export async function getFixedAssets(companyId: number) {
+  const { data } = await api.get<import('../types/api').FixedAssetRow[]>(
+    '/accounting/fixed-assets',
+    { params: { companyId } },
+  );
+  return data;
+}
+
+export async function createFixedAsset(payload: {
+  companyId: number;
+  name: string;
+  acquisitionDate: string;
+  acquisitionCost: number;
+  residualValue?: number;
+  usefulLifeMonths: number;
+  paidFrom?: 'CASH' | 'BANK' | 'SUPPLIER';
+  bankAccountId?: number;
+  note?: string;
+}) {
+  const { data } = await api.post<import('../types/api').FixedAssetRow>(
+    '/accounting/fixed-assets',
+    payload,
+  );
+  return data;
+}
+
+export async function runDepreciation(payload: {
+  companyId: number;
+  period: string;
+  fixedAssetId?: number;
+}) {
+  const { data } = await api.post<{
+    period: string;
+    results: Array<{
+      assetId: number;
+      name: string;
+      amount: number;
+      status: 'posted' | 'skipped' | 'fully_depreciated';
+    }>;
+  }>('/accounting/fixed-assets/depreciate', payload);
+  return data;
+}
+
 export async function getDashboardSummary(params?: { companyId?: number; companyIds?: number[] }) {
   const { data } = await api.get<DashboardSummaryReport>('/reports/dashboard-summary', {
     params: {
