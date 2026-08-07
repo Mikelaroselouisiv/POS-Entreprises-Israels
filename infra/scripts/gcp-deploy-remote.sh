@@ -37,32 +37,36 @@ gcloud compute scp "${COMPOSE_LOCAL}" \
   "${SSH_OPTS[@]}"
 
 echo "==> Déploiement sur ${GCP_VM_NAME} (${GCP_VM_ZONE})"
+# /opt/pos est root-owned : tout le workdir doit passer sous sudo bash -lc
 gcloud compute ssh "${GCP_VM_NAME}" \
   "${SSH_OPTS[@]}" \
   --command="set -euo pipefail
     REMOTE_DIR='${REMOTE_DIR}'
     sudo cp /tmp/docker-compose.gcp.yml \"\${REMOTE_DIR}/docker-compose.gcp.yml\"
-    cd \"\${REMOTE_DIR}\"
-    if command -v gcloud >/dev/null 2>&1; then
-      sudo gcloud auth configure-docker northamerica-northeast1-docker.pkg.dev --quiet || true
-    fi
-    # Prefer Compose V2 — legacy docker-compose 1.29 hits ContainerConfig KeyError
-    if docker compose version >/dev/null 2>&1; then
-      COMPOSE=(docker compose)
-    elif command -v docker-compose >/dev/null 2>&1; then
-      COMPOSE=(docker-compose)
-    else
-      echo 'No docker compose found' >&2
-      exit 1
-    fi
-    if [[ ! -f .env.prod ]]; then
-      echo 'Erreur: .env.prod manquant' >&2
-      exit 1
-    fi
-    sudo \"\${COMPOSE[@]}\" -f docker-compose.gcp.yml --env-file .env.prod pull backend
-    sudo docker rm -f pos_backend_prod || true
-    sudo \"\${COMPOSE[@]}\" -f docker-compose.gcp.yml --env-file .env.prod up -d --no-deps --force-recreate backend
-    sudo \"\${COMPOSE[@]}\" -f docker-compose.gcp.yml ps
+    sudo bash -lc \"
+      set -euo pipefail
+      cd '\${REMOTE_DIR}'
+      if command -v gcloud >/dev/null 2>&1; then
+        gcloud auth configure-docker northamerica-northeast1-docker.pkg.dev --quiet || true
+      fi
+      # Prefer Compose V2 — legacy docker-compose 1.29 hits ContainerConfig KeyError
+      if docker compose version >/dev/null 2>&1; then
+        COMPOSE=(docker compose)
+      elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE=(docker-compose)
+      else
+        echo 'No docker compose found' >&2
+        exit 1
+      fi
+      if [[ ! -f .env.prod ]]; then
+        echo 'Erreur: .env.prod manquant' >&2
+        exit 1
+      fi
+      \\\"\\\${COMPOSE[@]}\\\" -f docker-compose.gcp.yml --env-file .env.prod pull backend
+      docker rm -f pos_backend_prod || true
+      \\\"\\\${COMPOSE[@]}\\\" -f docker-compose.gcp.yml --env-file .env.prod up -d --no-deps --force-recreate backend
+      \\\"\\\${COMPOSE[@]}\\\" -f docker-compose.gcp.yml ps
+    \"
     rm -f /tmp/docker-compose.gcp.yml"
 
 echo "==> Déploiement GCP terminé"
