@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { BankTransactionType, FinanceType, MovementType, PaymentMethod, Prisma } from '@prisma/client';
 import { permissionsSatisfy } from '../../common/permissions';
@@ -256,12 +257,15 @@ export class SalesService {
       const registerId = createSaleDto.registerId ?? null;
 
       const clientUuid = createSaleDto.clientUuid ?? null;
+      // uuid : plus de DEFAULT SQL après drift Prisma (@default(uuid()) côté client seulement).
+      // L’INSERT brut doit donc fournir uuid explicitement.
+      const saleUuid = randomUUID();
       const insertedRows = await tx.$queryRaw<Array<{ id: number }>>`
         INSERT INTO "Sale"
-          ("total", "subtotal", "tax", "cashier", "userId", "storeId", "registerId", "clientUuid",
+          ("uuid", "total", "subtotal", "tax", "cashier", "userId", "storeId", "registerId", "clientUuid",
            "amountPaid", "amountReceived", "changeDue", "updatedAt")
         VALUES
-          (${total}, ${total}, 0, ${cashier}, ${userId ?? null}, ${storeId}, ${registerId}, ${clientUuid},
+          (${saleUuid}, ${total}, ${total}, 0, ${cashier}, ${userId ?? null}, ${storeId}, ${registerId}, ${clientUuid},
            ${amountPaid}, ${amountReceived}, ${changeDue}, NOW())
         RETURNING "id";
       `;

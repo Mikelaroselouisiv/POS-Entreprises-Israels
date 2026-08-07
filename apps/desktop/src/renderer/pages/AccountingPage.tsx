@@ -20,7 +20,9 @@ import {
   getAccountingOverview,
   getAccountingSuppliers,
   getBalanceSheet,
+  getCompanies,
   getCompany,
+  getDepartments,
   getFixedAssets,
   getGeneralLedger,
   getIncomeStatement,
@@ -108,7 +110,6 @@ const ALLOW_CHART_OF_ACCOUNTS_EDIT = false;
 
 export function AccountingPage() {
   const { user, canPerm } = useAuth();
-  const companyId = user?.companyId ?? null;
   const canManage = canPerm('accounting.manage');
   const canWrite = canPerm('accounting.write');
   const canEditChart = canManage && ALLOW_CHART_OF_ACCOUNTS_EDIT;
@@ -117,6 +118,13 @@ export function AccountingPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [companyName, setCompanyName] = useState('');
+  /** Résolu comme Crédit/Achats : user.companyId OU entreprise du département OU 1ʳᵉ entreprise. */
+  const [companyId, setCompanyId] = useState<number | null>(
+    typeof user?.companyId === 'number' ? user.companyId : null,
+  );
+  const [companyResolving, setCompanyResolving] = useState(
+    () => typeof user?.companyId !== 'number',
+  );
 
   const [overviewYears, setOverviewYears] = useState<FiscalYearRow[]>([]);
   const [openYear, setOpenYear] = useState<FiscalYearRow | null>(null);
@@ -340,20 +348,71 @@ export function AccountingPage() {
   }
 
   useEffect(() => {
-    void getCompany()
-      .then((c) => setCompanyName(c?.legalName || c?.name || ''))
-      .catch(() => undefined);
-  }, []);
+    let cancelled = false;
+    async function resolveCompany() {
+      if (typeof user?.companyId === 'number') {
+        if (!cancelled) {
+          setCompanyId(user.companyId);
+          setCompanyResolving(false);
+        }
+        return;
+      }
+      setCompanyResolving(true);
+      try {
+        // Beaucoup d’utilisateurs prod n’ont que departmentId (companyId null en base).
+        if (typeof user?.departmentId === 'number') {
+          const depts = await getDepartments();
+          const dept = depts.find((d) => d.id === user.departmentId);
+          if (dept?.companyId && !cancelled) {
+            setCompanyId(dept.companyId);
+            setCompanyResolving(false);
+            return;
+          }
+        }
+        const list = await getCompanies();
+        if (!cancelled) {
+          setCompanyId(list[0]?.id ?? null);
+        }
+      } catch {
+        if (!cancelled) setCompanyId(null);
+      } finally {
+        if (!cancelled) setCompanyResolving(false);
+      }
+    }
+    void resolveCompany();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.companyId, user?.departmentId]);
 
   useEffect(() => {
+    if (companyId == null) {
+      setCompanyName('');
+      return;
+    }
+    void getCompany()
+      .then((c) => setCompanyName(c?.legalName || c?.name || ''))
+      .catch(() => {
+        void getCompanies()
+          .then((list) => {
+            const c = list.find((x) => x.id === companyId);
+            setCompanyName(c?.legalName || c?.name || '');
+          })
+          .catch(() => undefined);
+      });
+  }, [companyId]);
+
+  useEffect(() => {
+    if (companyId == null) return;
     void refreshOverview().catch((e) =>
       setError(formatApiError(e, 'Impossible de charger les exercices comptables')),
     );
-  }, [refreshOverview]);
+  }, [refreshOverview, companyId]);
 
   useEffect(() => {
+    if (companyId == null) return;
     void loadTabData();
-  }, [loadTabData]);
+  }, [loadTabData, companyId]);
 
   async function onOpenYear(e: FormEvent) {
     e.preventDefault();
@@ -631,13 +690,24 @@ export function AccountingPage() {
     ['saisie', 'Saisie OD'],
   ];
 
+  if (companyResolving) {
+    return (
+      <div className="page-inner">
+        <header className="page-header">
+          <h1>Comptabilité</h1>
+        </header>
+        <p className="acc-empty">Chargement…</p>
+      </div>
+    );
+  }
+
   if (companyId == null) {
     return (
       <div className="page-inner">
         <header className="page-header">
           <h1>Comptabilité</h1>
         </header>
-        <p className="muted">Associez un utilisateur à une entreprise pour accéder à la comptabilité.</p>
+        <p className="acc-empty">Aucune entreprise accessible pour ce compte.</p>
       </div>
     );
   }
