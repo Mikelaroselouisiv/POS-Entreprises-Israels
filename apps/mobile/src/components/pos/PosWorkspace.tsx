@@ -109,6 +109,7 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
   const [qtyDrafts, setQtyDrafts] = useState<Record<number, string>>({});
   const [cashGaps, setCashGaps] = useState<SaleCashGaps>({ changeOwed: [], balanceOwed: [] });
   const [cashGapBusyId, setCashGapBusyId] = useState<number | null>(null);
+  const [cashGapQuery, setCashGapQuery] = useState('');
 
   const activeDraft = useMemo(
     () => drafts.find((d) => d.id === activeDraftId) ?? drafts[0],
@@ -119,7 +120,7 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
   const clientName = activeDraft?.name ?? 'Client';
 
   const pendingCount = usePendingSalesCount();
-  const showTenderField = mode === 'classic' && (paymentMethod === 'CASH' || paymentMethod === 'SPLIT');
+  const showTenderField = paymentMethod === 'CASH' || paymentMethod === 'SPLIT';
   const salesEnabled = registerSession != null;
 
   const loadProducts = useCallback(() => {
@@ -260,6 +261,29 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
     const balanceDue = Math.max(0, Math.round((cartTotal - tendered) * 100) / 100);
     return { tendered, changeDue, balanceDue };
   }, [amountReceived, cartTotal, showTenderField]);
+
+  const filteredCashGaps = useMemo(() => {
+    const q = cashGapQuery.trim().toLowerCase().replace(/^#/, '');
+    if (!q) return cashGaps;
+    const match = (row: SaleCashGapRow) => {
+      const txn = String(row.txnNumber ?? row.id);
+      const name = (row.clientName ?? '').trim().toLowerCase();
+      const cashier = (row.cashier ?? '').trim().toLowerCase();
+      const amounts = [row.changeDue, row.balanceDue, row.total, row.amountReceived, row.amountPaid]
+        .map((n) => String(n))
+        .join(' ');
+      return (
+        txn.includes(q) ||
+        name.includes(q) ||
+        cashier.includes(q) ||
+        amounts.includes(q.replace(',', '.'))
+      );
+    };
+    return {
+      changeOwed: cashGaps.changeOwed.filter(match),
+      balanceOwed: cashGaps.balanceOwed.filter(match),
+    };
+  }, [cashGaps, cashGapQuery]);
 
   function refuseClosedCaisse() {
     setStatus('Caisse fermée — ouvrez une session pour encaisser');
@@ -699,19 +723,34 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
             }
             ListFooterComponent={
               <View style={styles.gapsBlock}>
+                {cashGaps.changeOwed.length > 0 || cashGaps.balanceOwed.length > 0 ? (
+                  <TextInput
+                    style={styles.gapsSearch}
+                    placeholder="Rechercher (#fiche, client…)"
+                    placeholderTextColor={BrandColors.textMuted}
+                    value={cashGapQuery}
+                    onChangeText={setCashGapQuery}
+                    autoCorrect={false}
+                    clearButtonMode="while-editing"
+                  />
+                ) : null}
                 <Text style={styles.gapsTitle}>Monnaie à rendre</Text>
                 {cashGaps.changeOwed.length === 0 ? (
                   <Text style={styles.gapsEmpty}>Aucune</Text>
+                ) : filteredCashGaps.changeOwed.length === 0 ? (
+                  <Text style={styles.gapsEmpty}>Aucun résultat</Text>
                 ) : (
-                  cashGaps.changeOwed.map((row) => renderCashGapRow(row, 'change'))
+                  filteredCashGaps.changeOwed.map((row) => renderCashGapRow(row, 'change'))
                 )}
                 <Text style={[styles.gapsTitle, { marginTop: Spacing.three }]}>
                   Restes à encaisser
                 </Text>
                 {cashGaps.balanceOwed.length === 0 ? (
                   <Text style={styles.gapsEmpty}>Aucun</Text>
+                ) : filteredCashGaps.balanceOwed.length === 0 ? (
+                  <Text style={styles.gapsEmpty}>Aucun résultat</Text>
                 ) : (
-                  cashGaps.balanceOwed.map((row) => renderCashGapRow(row, 'balance'))
+                  filteredCashGaps.balanceOwed.map((row) => renderCashGapRow(row, 'balance'))
                 )}
               </View>
             }
@@ -1156,6 +1195,17 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.border,
     backgroundColor: BrandColors.surface,
     gap: Spacing.two,
+  },
+  gapsSearch: {
+    borderWidth: 1,
+    borderColor: BrandColors.borderStrong,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: BrandColors.text,
+    backgroundColor: BrandColors.surface,
+    marginBottom: Spacing.one,
   },
   gapsTitle: { fontWeight: '700', color: BrandColors.text, fontSize: 15 },
   gapsEmpty: { color: BrandColors.textMuted, fontSize: 13 },

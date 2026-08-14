@@ -69,11 +69,21 @@ export function DashboardPage() {
   const isAdmin = can(['ADMIN']);
   const canAccessDashboard = canPerm('dashboard.view');
   const canManageFinance = canPerm('finance.write');
+  /** Voir journal / totaux finance (pas seulement saisir une dépense). */
+  const canViewFinance = canPerm('finance.view') || canManageFinance;
+  /** Formulaire dépense seul — sans accès au reste de la finance. */
+  const canRecordExpense = canPerm('finance.expense') || canManageFinance;
+  const showExpensesTab = canRecordExpense || canViewFinance;
   const canCancelOrRefund = canPerm('sales.cancel');
   const canDeleteSale = canPerm('sales.delete');
-  const canSeePurchases = isAdmin;
+  const canSeePurchases = isAdmin || canPerm('purchasing.manage');
+  const canSeeSynthesis = isAdmin || canPerm('dashboard.synthesis') || canPerm('reports.view');
+  const canSeeBanks = isAdmin || canPerm('banks.view') || canPerm('banks.manage');
+  const canSeeBenefices = isAdmin || canPerm('reports.view');
+  const canSeeGlobalStock = isAdmin || canPerm('stock.global') || canPerm('reports.view');
+  const canSeeSales = isAdmin || canPerm('sales.view');
 
-  const [tab, setTab] = useState<TabId>(isAdmin ? 'synthese' : 'ventes');
+  const [tab, setTab] = useState<TabId>(() => (canSeeSynthesis ? 'synthese' : 'ventes'));
   const [inventoryHistorySlot, setInventoryHistorySlot] = useState<HTMLDivElement | null>(null);
   const [ledgerPdfLoading, setLedgerPdfLoading] = useState(false);
   const [saleActionBusy, setSaleActionBusy] = useState(false);
@@ -183,6 +193,39 @@ export function DashboardPage() {
 
   const [msg, setMsg] = useAutoClearMessage();
 
+  const allowedTabs = useMemo(() => {
+    const tabs: Array<[TabId, string]> = [];
+    if (canSeeSynthesis) tabs.push(['synthese', 'Synthèse']);
+    if (canSeeSales) tabs.push(['ventes', 'Ventes']);
+    if (canSeeGlobalStock) tabs.push(['stock', 'Stock & Mouvements']);
+    if (showExpensesTab) {
+      tabs.push([
+        'achats',
+        canViewFinance && (isAdmin || canSeePurchases) ? 'Achats & Dépenses' : 'Dépenses',
+      ]);
+    }
+    if (canSeeBanks) tabs.push(['banque', 'Banque']);
+    if (canSeeBenefices) tabs.push(['benefices', 'Analyse des bénéfices']);
+    return tabs;
+  }, [
+    canSeeSynthesis,
+    canSeeSales,
+    canSeeGlobalStock,
+    showExpensesTab,
+    canViewFinance,
+    canSeePurchases,
+    canSeeBanks,
+    canSeeBenefices,
+    isAdmin,
+  ]);
+
+  useEffect(() => {
+    if (allowedTabs.length === 0) return;
+    if (!allowedTabs.some(([id]) => id === tab)) {
+      setTab(allowedTabs[0][0]);
+    }
+  }, [allowedTabs, tab]);
+
   const salesByDepartmentGroups = useMemo(() => {
     const groups: {
       key: string;
@@ -252,8 +295,7 @@ export function DashboardPage() {
   }, [companyId, canAccessDashboard]);
 
   useEffect(() => {
-    if (!canManageFinance && !isAdmin) return;
-    if (companyId === '') return;
+    if (!canAccessDashboard || companyId === '') return;
 
     const cid = Number(companyId);
     setAchatsTotalsDateFrom(defaultMonthStartYmd());
@@ -291,7 +333,7 @@ export function DashboardPage() {
     setTxnDateFrom(defaultMonthStartYmd());
     setTxnDateTo(formatYmd(new Date()));
 
-    if (!isAdmin) return;
+    if (!canSeeGlobalStock) return;
 
     void Promise.all([
       getInventoryAlerts({ threshold: 5, companyId: cid, skip: 0, take: alertsTake }),
@@ -309,17 +351,17 @@ export function DashboardPage() {
         setMovementsTotal(mov.total);
       })
       .catch(() => setMsg('Impossible de charger le tableau de bord.', { persist: true }));
-  }, [companyId, isAdmin, canManageFinance, setMsg]);
+  }, [companyId, canAccessDashboard, canSeeGlobalStock, setMsg]);
 
   useEffect(() => {
-    if (!isAdmin || companyId === '' || tab !== 'stock') return;
+    if (!canSeeGlobalStock || companyId === '' || tab !== 'stock') return;
     const cid = Number(companyId);
     setGlobalCompanyIds([cid]);
     setGlobalDeptIds([]);
     setGlobalItems([]);
     setGlobalAsOf('');
     setGlobalAsOfApplied(null);
-  }, [companyId, tab, isAdmin]);
+  }, [companyId, tab, canSeeGlobalStock]);
 
   async function loadGlobalSnapshot() {
     setGlobalLoading(true);
@@ -410,7 +452,7 @@ export function DashboardPage() {
   }, [companyId, salesListQuery, canAccessDashboard, setMsg, tab]);
 
   useEffect(() => {
-    if (!canManageFinance || companyId === '' || tab !== 'achats') return;
+    if (!canViewFinance || companyId === '' || tab !== 'achats') return;
     if (!achatsTotalsDateFrom || !achatsTotalsDateTo || achatsTotalsDateFrom > achatsTotalsDateTo) return;
     setAchatsTotalsLoading(true);
     void getDashboardSummaryRange({
@@ -423,10 +465,10 @@ export function DashboardPage() {
         setMsg('Impossible de charger les totaux achats / dépenses.', { persist: true }),
       )
       .finally(() => setAchatsTotalsLoading(false));
-  }, [tab, companyId, achatsTotalsDateFrom, achatsTotalsDateTo, canManageFinance, setMsg]);
+  }, [tab, companyId, achatsTotalsDateFrom, achatsTotalsDateTo, canViewFinance, setMsg]);
 
   useEffect(() => {
-    if (!canManageFinance || companyId === '' || tab !== 'achats') return;
+    if (!canViewFinance || companyId === '' || tab !== 'achats') return;
     if (!ledgerDateFrom || !ledgerDateTo || ledgerDateFrom > ledgerDateTo) return;
     setLedgerLoading(true);
     setLedgerSkip(0);
@@ -446,10 +488,10 @@ export function DashboardPage() {
       })
       .catch(() => setMsg('Impossible de charger le journal unifié.', { persist: true }))
       .finally(() => setLedgerLoading(false));
-  }, [tab, companyId, ledgerDateFrom, ledgerDateTo, effectiveLedgerNature, canManageFinance, canSeePurchases, setMsg]);
+  }, [tab, companyId, ledgerDateFrom, ledgerDateTo, effectiveLedgerNature, canViewFinance, canSeePurchases, setMsg]);
 
   async function refreshAchatsLedger() {
-    if (companyId === '') return;
+    if (companyId === '' || !canViewFinance) return;
     const cid = Number(companyId);
     const [range, ledgerRes] = await Promise.all([
       getDashboardSummaryRange({
@@ -475,7 +517,7 @@ export function DashboardPage() {
 
   async function submitExpense(e: FormEvent) {
     e.preventDefault();
-    if (companyId === '') return;
+    if (companyId === '' || !canRecordExpense) return;
     setMsg('');
     const amount = Number(expenseAmount);
     const description =
@@ -888,28 +930,12 @@ export function DashboardPage() {
   if (!canAccessDashboard) {
     return (
       <div className="page-inner">
-        <p className="info-text">Accès réservé à l&apos;administrateur ou au gérant.</p>
+        <p className="info-text">Accès au tableau de bord non autorisé pour ce rôle.</p>
       </div>
     );
   }
 
-  const dashboardTabs = (
-    isAdmin
-      ? ([
-          ['synthese', 'Synthèse'],
-          ['ventes', 'Ventes'],
-          ['stock', 'Stock & Mouvements'],
-          ['achats', 'Achats & Dépenses'],
-          ['banque', 'Banque'],
-          ['benefices', 'Analyse des bénéfices'],
-        ] as const)
-      : ([
-          ['ventes', 'Ventes'],
-          ['achats', 'Dépenses'],
-          ['banque', 'Banque'],
-          ['benefices', 'Analyse des bénéfices'],
-        ] as const)
-  );
+  const dashboardTabs = allowedTabs;
 
   return (
     <div className="page-inner">
@@ -966,7 +992,7 @@ export function DashboardPage() {
 
       {msg ? <p className="info-text" style={{ marginTop: '0.9rem' }}>{msg}</p> : null}
 
-      {tab === 'synthese' ? (
+      {tab === 'synthese' && canSeeSynthesis ? (
         companies.length === 0 ? (
           <p className="info-text" style={{ marginTop: '0.9rem' }}>Chargement…</p>
         ) : (
@@ -1002,7 +1028,7 @@ export function DashboardPage() {
         <p className="info-text" style={{ marginTop: '0.9rem' }}>Chargement…</p>
       ) : (
         <>
-          {tab === 'ventes' ? (
+          {tab === 'ventes' && canSeeSales ? (
             <>
               <section className="card" style={{ marginTop: '1rem' }}>
                 <h2>Ventes</h2>
@@ -1248,99 +1274,111 @@ export function DashboardPage() {
             </>
           ) : null}
 
-          {tab === 'achats' ? (
+          {tab === 'achats' && showExpensesTab ? (
             <>
-              <section className="grid two-col" style={{ marginTop: '1rem' }}>
-                <div className="card">
-                  <h2>Nouvelle dépense manuelle</h2>
-                  <form className="form-grid" onSubmit={(e) => void submitExpense(e)}>
-                    <label>
-                      Libellé
-                      <select
-                        value={expenseLabelChoice}
-                        onChange={(e) => {
-                          setExpenseLabelChoice(e.target.value);
-                          if (e.target.value !== EXPENSE_LABEL_OTHER) setExpenseDescOther('');
-                        }}
-                        required
-                      >
-                        <option value="">— Choisir —</option>
-                        {EXPENSE_LABEL_OPTIONS.map((label) => (
-                          <option key={label} value={label}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {expenseLabelChoice === EXPENSE_LABEL_OTHER ? (
+              <section
+                className={canViewFinance ? 'grid two-col' : 'grid'}
+                style={{ marginTop: '1rem' }}
+              >
+                {canRecordExpense ? (
+                  <div className="card">
+                    <h2>Nouvelle dépense manuelle</h2>
+                    {!canViewFinance ? (
+                      <p className="dept-hint">
+                        Vous pouvez enregistrer une dépense. Le journal et les totaux finance restent
+                        réservés à d’autres rôles.
+                      </p>
+                    ) : null}
+                    <form className="form-grid" onSubmit={(e) => void submitExpense(e)}>
                       <label>
-                        Préciser
-                        <input
-                          value={expenseDescOther}
-                          onChange={(e) => setExpenseDescOther(e.target.value)}
+                        Libellé
+                        <select
+                          value={expenseLabelChoice}
+                          onChange={(e) => {
+                            setExpenseLabelChoice(e.target.value);
+                            if (e.target.value !== EXPENSE_LABEL_OTHER) setExpenseDescOther('');
+                          }}
                           required
-                          placeholder="Libellé libre…"
+                        >
+                          <option value="">— Choisir —</option>
+                          {EXPENSE_LABEL_OPTIONS.map((label) => (
+                            <option key={label} value={label}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {expenseLabelChoice === EXPENSE_LABEL_OTHER ? (
+                        <label>
+                          Préciser
+                          <input
+                            value={expenseDescOther}
+                            onChange={(e) => setExpenseDescOther(e.target.value)}
+                            required
+                            placeholder="Libellé libre…"
+                          />
+                        </label>
+                      ) : null}
+                      <label>
+                        Détail
+                        <textarea
+                          value={expenseDetail}
+                          onChange={(e) => setExpenseDetail(e.target.value)}
+                          placeholder="Précisions optionnelles…"
+                          rows={2}
+                          maxLength={1000}
                         />
                       </label>
-                    ) : null}
-                    <label>
-                      Détail
-                      <textarea
-                        value={expenseDetail}
-                        onChange={(e) => setExpenseDetail(e.target.value)}
-                        placeholder="Précisions optionnelles…"
-                        rows={2}
-                        maxLength={1000}
-                      />
-                    </label>
-                    <MoneyField
-                      label="Montant"
-                      min={0.01}
-                      step={0.01}
-                      value={expenseAmount}
-                      onChange={(e) => setExpenseAmount(e.target.value)}
-                      required
-                    />
-                    <label>
-                      Date de la dépense
-                      <input
-                        type="date"
-                        value={expenseEntryDate}
-                        onChange={(e) => setExpenseEntryDate(e.target.value)}
+                      <MoneyField
+                        label="Montant"
+                        min={0.01}
+                        step={0.01}
+                        value={expenseAmount}
+                        onChange={(e) => setExpenseAmount(e.target.value)}
                         required
                       />
-                    </label>
-                    <label>
-                      Département (impression)
-                      <select
-                        value={expenseDeptId === '' ? '' : String(expenseDeptId)}
-                        onChange={(e) =>
-                          setExpenseDeptId(e.target.value ? Number(e.target.value) : '')
-                        }
-                        disabled={departments.length === 0}
-                      >
-                        <option value="">— Choisir —</option>
-                        {departments.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={expensePrintOrder}
-                        onChange={(e) => setExpensePrintOrder(e.target.checked)}
-                      />
-                      Imprimer l’ordre de décaissement
-                    </label>
-                    <button type="submit" className="btn btn-primary">
-                      Enregistrer
-                    </button>
-                  </form>
-                </div>
+                      <label>
+                        Date de la dépense
+                        <input
+                          type="date"
+                          value={expenseEntryDate}
+                          onChange={(e) => setExpenseEntryDate(e.target.value)}
+                          required
+                        />
+                      </label>
+                      <label>
+                        Département (impression)
+                        <select
+                          value={expenseDeptId === '' ? '' : String(expenseDeptId)}
+                          onChange={(e) =>
+                            setExpenseDeptId(e.target.value ? Number(e.target.value) : '')
+                          }
+                          disabled={departments.length === 0}
+                        >
+                          <option value="">— Choisir —</option>
+                          {departments.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={expensePrintOrder}
+                          onChange={(e) => setExpensePrintOrder(e.target.checked)}
+                        />
+                        Imprimer l’ordre de décaissement
+                      </label>
+                      <button type="submit" className="btn btn-primary">
+                        Enregistrer
+                      </button>
+                    </form>
+                  </div>
+                ) : null}
 
+                {canViewFinance ? (
                 <div className="card">
                   <h2>{canSeePurchases ? 'Totaux (achats & dépenses manuelles)' : 'Totaux (dépenses manuelles)'}</h2>
                   <div
@@ -1390,8 +1428,10 @@ export function DashboardPage() {
                     </section>
                   )}
                 </div>
+                ) : null}
               </section>
 
+              {canViewFinance ? (
               <section className="card" style={{ marginTop: '1rem' }}>
                 <h2>{canSeePurchases ? 'Journal (achats, ventes caisse, dépenses)' : 'Journal (ventes caisse, dépenses)'}</h2>
                 <div
@@ -1532,10 +1572,11 @@ export function DashboardPage() {
                   </div>
                 ) : null}
               </section>
+              ) : null}
             </>
           ) : null}
 
-          {tab === 'stock' ? (
+          {tab === 'stock' && canSeeGlobalStock ? (
             <>
               <StockLowAlertsPanel
                 alerts={alerts}
@@ -1743,7 +1784,7 @@ export function DashboardPage() {
         </>
       )}
 
-      {tab === 'banque' ? (
+      {tab === 'banque' && canSeeBanks ? (
         typeof companyId === 'number' ? (
           <DashboardBanksTab companyId={companyId} />
         ) : (
@@ -1753,7 +1794,7 @@ export function DashboardPage() {
         )
       ) : null}
 
-      {tab === 'benefices' ? (
+      {tab === 'benefices' && canSeeBenefices ? (
         typeof companyId === 'number' ? (
           <DashboardBeneficesTab companyId={companyId} />
         ) : (

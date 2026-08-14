@@ -174,24 +174,36 @@ export class RolesService implements OnModuleInit {
     /** Permissions retirées des rôles système (ne doivent plus rester en base). */
     const revokedByRole: Record<string, string[]> = {
       CASHIER: ['config.view', 'config.manage'],
+      /** Gérant : plus de vue globale argent / banque / compta (réactivable dans Rôles). */
+      MANAGER: [
+        'banks.view',
+        'banks.manage',
+        'accounting.view',
+        'accounting.write',
+        'accounting.manage',
+        'company.manage',
+        'reports.view',
+        'finance.view',
+        'finance.write',
+      ],
     };
     /**
      * Nouvelles permissions catalogue à ajouter une fois (remplacent d’anciens hardcodes),
      * sans réinjecter tout le défaut MANAGER.
      */
     const grantIfMissingByRole: Record<string, string[]> = {
-      MANAGER: [
-        'sales.special_price',
-        'accounting.view',
-        'accounting.write',
-      ],
+      MANAGER: ['sales.special_price'],
       ACCOUNTANT: [
         'accounting.view',
         'accounting.write',
         'accounting.manage',
         'credit.view',
         'banks.view',
+        'dashboard.synthesis',
+        'reports.view',
+        'stock.global',
       ],
+      ADMIN: ['dashboard.synthesis', 'stock.global'],
     };
 
     for (const [code, perms] of Object.entries(DEFAULT_ROLE_PERMISSIONS)) {

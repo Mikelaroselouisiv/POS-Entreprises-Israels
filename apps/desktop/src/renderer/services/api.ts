@@ -875,6 +875,8 @@ export async function closeRegisterSession(
 
 export async function getRegisterClosingCashPreview(sessionId: number): Promise<{
   openingCash: number;
+  /** Somme des totaux de vente de la session (classique + spéciale). */
+  salesTotal?: number;
   salesCash: number;
   expenses: number;
   unsettledChange: number;
@@ -882,6 +884,7 @@ export async function getRegisterClosingCashPreview(sessionId: number): Promise<
 }> {
   const { data } = await api.get<{
     openingCash: number;
+    salesTotal?: number;
     salesCash: number;
     expenses: number;
     unsettledChange: number;

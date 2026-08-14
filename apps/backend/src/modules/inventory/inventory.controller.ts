@@ -24,7 +24,7 @@ import {
   generatedMetaLine,
 } from '../../common/pdf/pdf-document';
 import { formatDateFr, formatDateTimeFr, formatQty } from '../../common/pdf/pdf-format';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Permissions, PermissionsAny } from '../../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { InventoryService } from './inventory.service';
@@ -189,7 +189,7 @@ export class InventoryController {
   }
 
   @Get('global-snapshot')
-  @Permissions('stock.view')
+  @PermissionsAny('stock.global', 'reports.view')
   globalSnapshot(
     @Query('companyIds') companyIdsRaw?: string,
     @Query('departmentIds') departmentIdsRaw?: string,
@@ -208,7 +208,7 @@ export class InventoryController {
   }
 
   @Get('global-snapshot/export/pdf')
-  @Permissions('stock.view')
+  @PermissionsAny('stock.global', 'reports.view')
   async exportGlobalSnapshotPdf(
     @Res() res: Response,
     @Query('companyIds') companyIdsRaw?: string,

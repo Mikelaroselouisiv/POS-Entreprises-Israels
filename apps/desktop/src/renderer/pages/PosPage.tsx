@@ -176,6 +176,7 @@ export function PosPage() {
     balanceOwed: SaleCashGapRow[];
   }>({ changeOwed: [], balanceOwed: [] });
   const [cashGapBusyId, setCashGapBusyId] = useState<number | null>(null);
+  const [cashGapQuery, setCashGapQuery] = useState('');
 
   const [registerSession, setRegisterSession] = useState<RegisterSessionDetail | null>(null);
   const [registers, setRegisters] = useState<RegisterListItem[]>([]);
@@ -188,6 +189,14 @@ export function PosPage() {
   const [openingCash, setOpeningCash] = useState('');
   const [closingCashExpected, setClosingCashExpected] = useState('');
   const [closingCashCounted, setClosingCashCounted] = useState('');
+  const [closingCashPreview, setClosingCashPreview] = useState<{
+    openingCash: number;
+    salesTotal?: number;
+    salesCash: number;
+    expenses: number;
+    unsettledChange: number;
+    expected: number;
+  } | null>(null);
 
   const salesEnabled = registerSession != null;
 
@@ -420,8 +429,11 @@ export function PosPage() {
     );
   }, [activeCart, saleMode]);
 
+  const showTenderField =
+    activeDraft?.paymentMethod === 'CASH' || activeDraft?.paymentMethod === 'SPLIT';
+
   const tenderPreview = useMemo(() => {
-    if (saleMode !== 'classic') return null;
+    if (!showTenderField) return null;
     const raw = amountReceived.trim().replace(',', '.');
     if (raw === '') return null;
     const received = Number(raw);
@@ -429,11 +441,36 @@ export function PosPage() {
     const changeDue = Math.max(0, Math.round((received - cartTotal) * 100) / 100);
     const balanceDue = Math.max(0, Math.round((cartTotal - received) * 100) / 100);
     return { received, changeDue, balanceDue };
-  }, [amountReceived, cartTotal, saleMode]);
+  }, [amountReceived, cartTotal, showTenderField]);
 
-  const showTenderField =
-    saleMode === 'classic' &&
-    (activeDraft?.paymentMethod === 'CASH' || activeDraft?.paymentMethod === 'SPLIT');
+  const filteredCashGaps = useMemo(() => {
+    const q = cashGapQuery.trim().toLowerCase().replace(/^#/, '');
+    if (!q) return cashGaps;
+    const match = (row: SaleCashGapRow) => {
+      const txn = String(row.txnNumber ?? row.id);
+      const name = (row.clientName ?? '').trim().toLowerCase();
+      const cashier = (row.cashier ?? '').trim().toLowerCase();
+      const amounts = [
+        row.changeDue,
+        row.balanceDue,
+        row.total,
+        row.amountReceived,
+        row.amountPaid,
+      ]
+        .map((n) => String(n))
+        .join(' ');
+      return (
+        txn.includes(q) ||
+        name.includes(q) ||
+        cashier.includes(q) ||
+        amounts.includes(q.replace(',', '.'))
+      );
+    };
+    return {
+      changeOwed: cashGaps.changeOwed.filter(match),
+      balanceOwed: cashGaps.balanceOwed.filter(match),
+    };
+  }, [cashGaps, cashGapQuery]);
 
   async function refreshCashGaps() {
     const cid = effectiveCompanyId;
@@ -483,6 +520,7 @@ export function PosPage() {
     setSaleMode(mode);
     setDrafts([emptyDraft('d1')]);
     setActiveDraftId('d1');
+    setAmountReceived('');
   }
 
   function updateActiveDraft(next: (d: SaleDraft) => SaleDraft) {
@@ -904,6 +942,7 @@ export function PosPage() {
       setRegisterPanel(null);
       setClosingCashExpected('');
       setClosingCashCounted('');
+      setClosingCashPreview(null);
       await loadRegisterContext(effectiveDepartmentId, effectiveCompanyId);
       setStatus('Caisse fermée');
     } catch {
@@ -930,12 +969,16 @@ export function PosPage() {
     if (mode === 'close' && registerSession) {
       try {
         const preview = await getRegisterClosingCashPreview(registerSession.id);
+        setClosingCashPreview(preview);
         setClosingCashExpected(String(preview.expected));
       } catch {
+        setClosingCashPreview(null);
         const opening = Number(registerSession.openingCashAmount ?? 0);
         setClosingCashExpected(Number.isFinite(opening) ? String(opening) : '0');
         setRegisterError('Impossible de calculer les espèces attendues.');
       }
+    } else {
+      setClosingCashPreview(null);
     }
     setRegisterPanel(mode);
   }
@@ -1049,25 +1092,59 @@ export function PosPage() {
               busy={registerBusy}
               error={registerError}
               cashFields={
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <MoneyField
-                    label="Espèces attendues"
-                    currencyCode={currencyCode}
-                    type="text"
-                    inputMode="decimal"
-                    value={closingCashExpected}
-                    disabled
-                    readOnly
-                  />
-                  <MoneyField
-                    label="Espèces comptées"
-                    currencyCode={currencyCode}
-                    type="text"
-                    inputMode="decimal"
-                    value={closingCashCounted}
-                    disabled={registerBusy}
-                    onChange={(e) => setClosingCashCounted(e.target.value)}
-                  />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {closingCashPreview ? (
+                    <div className="pos-closing-cash-breakdown" aria-label="Détail caisse">
+                      <div className="pos-closing-cash-row">
+                        <span>Fond d’ouverture</span>
+                        <strong>{formatMoney(closingCashPreview.openingCash)}</strong>
+                      </div>
+                      <div className="pos-closing-cash-row">
+                        <span>Total ventes (session)</span>
+                        <strong>
+                          {formatMoney(
+                            closingCashPreview.salesTotal ?? closingCashPreview.salesCash,
+                          )}
+                        </strong>
+                      </div>
+                      <div className="pos-closing-cash-row">
+                        <span>Dont encaissements espèces</span>
+                        <strong>{formatMoney(closingCashPreview.salesCash)}</strong>
+                      </div>
+                      {closingCashPreview.unsettledChange > 0.009 ? (
+                        <div className="pos-closing-cash-row">
+                          <span>Monnaie non rendue</span>
+                          <strong>{formatMoney(closingCashPreview.unsettledChange)}</strong>
+                        </div>
+                      ) : null}
+                      {closingCashPreview.expenses > 0.009 ? (
+                        <div className="pos-closing-cash-row">
+                          <span>Dépenses</span>
+                          <strong>−{formatMoney(closingCashPreview.expenses)}</strong>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <MoneyField
+                      label="Espèces attendues"
+                      currencyCode={currencyCode}
+                      type="text"
+                      inputMode="decimal"
+                      value={closingCashExpected}
+                      disabled
+                      readOnly
+                    />
+                    <MoneyField
+                      label="Espèces comptées"
+                      currencyCode={currencyCode}
+                      type="text"
+                      inputMode="decimal"
+                      value={closingCashCounted}
+                      disabled={registerBusy}
+                      onChange={(e) => setClosingCashCounted(e.target.value)}
+                    />
+                  </div>
                 </div>
               }
               onSubmit={(lines) => void onCloseRegister(lines)}
@@ -1434,13 +1511,35 @@ export function PosPage() {
           </button>
 
           <div className="pos-cash-gaps">
+            {(cashGaps.changeOwed.length > 0 || cashGaps.balanceOwed.length > 0) ? (
+              <label className="pos-cash-gap-search">
+                <span className="sr-only">Rechercher une fiche</span>
+                <input
+                  type="search"
+                  value={cashGapQuery}
+                  onChange={(e) => setCashGapQuery(e.target.value)}
+                  placeholder="Rechercher (#fiche, client…)"
+                  autoComplete="off"
+                />
+              </label>
+            ) : null}
             <section className="pos-cash-gap-list">
-              <h3>Monnaie à rendre</h3>
+              <h3>
+                Monnaie à rendre
+                {cashGapQuery.trim() && cashGaps.changeOwed.length > 0 ? (
+                  <span className="pos-cash-gap-count">
+                    {' '}
+                    ({filteredCashGaps.changeOwed.length}/{cashGaps.changeOwed.length})
+                  </span>
+                ) : null}
+              </h3>
               {cashGaps.changeOwed.length === 0 ? (
                 <p className="dept-hint">Aucune</p>
+              ) : filteredCashGaps.changeOwed.length === 0 ? (
+                <p className="dept-hint">Aucun résultat</p>
               ) : (
                 <ul>
-                  {cashGaps.changeOwed.map((row) => (
+                  {filteredCashGaps.changeOwed.map((row) => (
                     <li key={`c-${row.id}`}>
                       <div>
                         <strong>#{row.txnNumber ?? row.id}</strong>{' '}
@@ -1461,12 +1560,22 @@ export function PosPage() {
               )}
             </section>
             <section className="pos-cash-gap-list">
-              <h3>Restes à encaisser</h3>
+              <h3>
+                Restes à encaisser
+                {cashGapQuery.trim() && cashGaps.balanceOwed.length > 0 ? (
+                  <span className="pos-cash-gap-count">
+                    {' '}
+                    ({filteredCashGaps.balanceOwed.length}/{cashGaps.balanceOwed.length})
+                  </span>
+                ) : null}
+              </h3>
               {cashGaps.balanceOwed.length === 0 ? (
                 <p className="dept-hint">Aucun</p>
+              ) : filteredCashGaps.balanceOwed.length === 0 ? (
+                <p className="dept-hint">Aucun résultat</p>
               ) : (
                 <ul>
-                  {cashGaps.balanceOwed.map((row) => (
+                  {filteredCashGaps.balanceOwed.map((row) => (
                     <li key={`b-${row.id}`}>
                       <div>
                         <strong>#{row.txnNumber ?? row.id}</strong>{' '}

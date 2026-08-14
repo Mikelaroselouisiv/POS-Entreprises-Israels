@@ -1414,14 +1414,55 @@ select {
   color: #15803d;
 }
 
+.pos-closing-cash-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-muted, #f4f5f7);
+  border: 1px solid var(--border, #e5e7eb);
+  font-size: 0.9rem;
+}
+
+.pos-closing-cash-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.pos-closing-cash-row span {
+  color: var(--text-muted, #6b7280);
+}
+
 .pos-cash-gaps {
   margin-top: 1rem;
   display: grid;
   gap: 0.75rem;
   border-top: 1px dashed var(--ei-border);
   padding-top: 0.75rem;
-  max-height: 280px;
+  max-height: 320px;
   overflow: auto;
+}
+
+.pos-cash-gap-search {
+  display: block;
+  margin: 0;
+}
+
+.pos-cash-gap-search input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.55rem;
+}
+
+.pos-cash-gap-count {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ei-text-muted);
 }
 
 .pos-cash-gap-list h3 {

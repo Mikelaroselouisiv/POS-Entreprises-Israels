@@ -206,6 +206,8 @@ export interface AuditLogRow {
 
 export interface RegisterClosingCashPreview {
   openingCash: number;
+  /** Total des ventes de la session (classiques + spéciales). */
+  salesTotal?: number;
   salesCash: number;
   expenses: number;
   unsettledChange: number;
