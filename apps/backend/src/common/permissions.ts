@@ -14,6 +14,10 @@ export const PERMISSIONS = [
   { code: 'purchasing.manage', label: 'Achats et réceptions' },
   { code: 'sales.create', label: 'Enregistrer des ventes' },
   { code: 'sales.view', label: 'Consulter les ventes' },
+  {
+    code: 'sales.recent_totals',
+    label: 'Voir le total des ventes (2 derniers jours max)',
+  },
   { code: 'sales.cancel', label: 'Annuler ou rembourser des ventes' },
   { code: 'sales.delete', label: 'Supprimer définitivement des ventes' },
   { code: 'sales.special_price', label: 'Vente spéciale / prix manuel' },
@@ -54,6 +58,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<{ id: string; label: string; codes
     codes: [
       'sales.create',
       'sales.view',
+      'sales.recent_totals',
       'sales.cancel',
       'sales.delete',
       'sales.special_price',
@@ -129,11 +134,18 @@ export const SYSTEM_ROLE_LABELS: Record<string, string> = {
   LIVREUR: 'Livreur',
 };
 
+/**
+ * Nombre de jours calendaires (fuseau Port-au-Prince) pour `sales.recent_totals`
+ * : aujourd’hui + veille = 2 jours.
+ */
+export const SALES_RECENT_TOTALS_DAYS = 2;
+
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   ADMIN: ['*'],
   /**
    * Gérant = exploitation terrain (caisse, stock local, ventes du jour, crédit).
    * Pas de chiffres globaux / banque / compta / synthèse — à réactiver via Rôles si besoin.
+   * `sales.recent_totals` : totaux ventes limités aux 2 derniers jours.
    */
   MANAGER: [
     'dashboard.view',
@@ -146,6 +158,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'purchasing.manage',
     'sales.create',
     'sales.view',
+    'sales.recent_totals',
     'sales.cancel',
     'sales.special_price',
     'deliveries.view',

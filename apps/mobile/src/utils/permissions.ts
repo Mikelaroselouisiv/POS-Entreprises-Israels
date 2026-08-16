@@ -15,6 +15,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'purchasing.manage',
     'sales.create',
     'sales.view',
+    'sales.recent_totals',
     'sales.cancel',
     'sales.special_price',
     'deliveries.view',

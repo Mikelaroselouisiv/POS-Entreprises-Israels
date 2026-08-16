@@ -192,7 +192,7 @@ export class RolesService implements OnModuleInit {
      * sans réinjecter tout le défaut MANAGER.
      */
     const grantIfMissingByRole: Record<string, string[]> = {
-      MANAGER: ['sales.special_price'],
+      MANAGER: ['sales.special_price', 'sales.recent_totals'],
       ACCOUNTANT: [
         'accounting.view',
         'accounting.write',

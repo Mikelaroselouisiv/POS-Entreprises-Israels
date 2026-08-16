@@ -55,7 +55,7 @@ import { StockZeroAlertsPanel } from '../components/StockZeroAlertsPanel';
 import { StockMovementsPanel } from '../components/StockMovementsPanel';
 import { InventoryPhysicalSection } from '../components/InventoryPhysicalSection';
 import { formatMoney } from '../utils/currency';
-import { formatDateTime, formatYmd, defaultMonthStartYmd, ymdStartIso, ymdEndIso } from '../utils/datetime';
+import { formatDateTime, formatYmd, defaultMonthStartYmd, addDaysYmd, ymdStartIso, ymdEndIso } from '../utils/datetime';
 import {
   EXPENSE_LABEL_OPTIONS,
   EXPENSE_LABEL_OTHER,
@@ -82,6 +82,32 @@ export function DashboardPage() {
   const canSeeBenefices = isAdmin || canPerm('reports.view');
   const canSeeGlobalStock = isAdmin || canPerm('stock.global') || canPerm('reports.view');
   const canSeeSales = isAdmin || canPerm('sales.view');
+  /** Historique ventes libre (rapports). */
+  const canSeeUnlimitedSalesRange = isAdmin || canPerm('reports.view');
+  /** Totaux ventes : illimité via reports, ou fenêtre 2 jours via sales.recent_totals. */
+  const canSeeSalesTotals =
+    canSeeUnlimitedSalesRange || canPerm('sales.recent_totals');
+  const salesRecentMinYmd = useMemo(() => {
+    if (canSeeUnlimitedSalesRange || !canSeeSalesTotals) return null;
+    return addDaysYmd(formatYmd(new Date()), -1);
+  }, [canSeeUnlimitedSalesRange, canSeeSalesTotals]);
+
+  function defaultVentesFromYmd() {
+    if (salesRecentMinYmd) return salesRecentMinYmd;
+    return defaultMonthStartYmd();
+  }
+
+  function clampSalesRangeYmd(from: string, to: string): { from: string; to: string } {
+    const today = formatYmd(new Date());
+    let nextFrom = from;
+    let nextTo = to;
+    if (salesRecentMinYmd) {
+      if (nextFrom < salesRecentMinYmd) nextFrom = salesRecentMinYmd;
+      if (nextTo > today) nextTo = today;
+      if (nextTo < nextFrom) nextTo = nextFrom;
+    }
+    return { from: nextFrom, to: nextTo };
+  }
 
   const [tab, setTab] = useState<TabId>(() => (canSeeSynthesis ? 'synthese' : 'ventes'));
   const [inventoryHistorySlot, setInventoryHistorySlot] = useState<HTMLDivElement | null>(null);
@@ -179,7 +205,11 @@ export function DashboardPage() {
 
   const [salesByProductRows, setSalesByProductRows] = useState<DashboardSalesByProductRow[]>([]);
   const [salesByProductLoading, setSalesByProductLoading] = useState(false);
-  const [ventesDateFrom, setVentesDateFrom] = useState(defaultMonthStartYmd);
+  const [ventesDateFrom, setVentesDateFrom] = useState(() => {
+    const today = formatYmd(new Date());
+    if (!canSeeUnlimitedSalesRange && canSeeSalesTotals) return addDaysYmd(today, -1);
+    return defaultMonthStartYmd();
+  });
   const [ventesDateTo, setVentesDateTo] = useState(() => formatYmd(new Date()));
   const [ventesPdfLoading, setVentesPdfLoading] = useState(false);
   const [ventesDeptModal, setVentesDeptModal] = useState<{
@@ -188,7 +218,11 @@ export function DashboardPage() {
     rows: DashboardSalesByProductRow[];
   } | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [txnDateFrom, setTxnDateFrom] = useState(defaultMonthStartYmd);
+  const [txnDateFrom, setTxnDateFrom] = useState(() => {
+    const today = formatYmd(new Date());
+    if (!canSeeUnlimitedSalesRange && canSeeSalesTotals) return addDaysYmd(today, -1);
+    return defaultMonthStartYmd();
+  });
   const [txnDateTo, setTxnDateTo] = useState(() => formatYmd(new Date()));
 
   const [msg, setMsg] = useAutoClearMessage();
@@ -328,9 +362,9 @@ export function DashboardPage() {
     setSaleReceiptPrinter(null);
     setSalesByProductRows([]);
     setVentesDeptModal(null);
-    setVentesDateFrom(defaultMonthStartYmd());
+    setVentesDateFrom(defaultVentesFromYmd());
     setVentesDateTo(formatYmd(new Date()));
-    setTxnDateFrom(defaultMonthStartYmd());
+    setTxnDateFrom(defaultVentesFromYmd());
     setTxnDateTo(formatYmd(new Date()));
 
     if (!canSeeGlobalStock) return;
@@ -418,20 +452,39 @@ export function DashboardPage() {
   }
 
   useEffect(() => {
-    if (!canAccessDashboard || companyId === '' || tab !== 'ventes') return;
-    if (!ventesDateFrom || !ventesDateTo || ventesDateFrom > ventesDateTo) return;
+    if (!canAccessDashboard || companyId === '' || tab !== 'ventes' || !canSeeSalesTotals) {
+      if (!canSeeSalesTotals) setSalesByProductRows([]);
+      return;
+    }
+    const { from, to } = clampSalesRangeYmd(ventesDateFrom, ventesDateTo);
+    if (from !== ventesDateFrom || to !== ventesDateTo) {
+      setVentesDateFrom(from);
+      setVentesDateTo(to);
+      return;
+    }
+    if (!from || !to || from > to) return;
     setSalesByProductLoading(true);
     void getDashboardSalesByProduct({
       companyId: Number(companyId),
-      dateFrom: ventesDateFrom,
-      dateTo: ventesDateTo,
+      dateFrom: from,
+      dateTo: to,
     })
       .then(setSalesByProductRows)
       .catch(() =>
         setMsg('Impossible de charger le détail des ventes par produit.', { persist: true }),
       )
       .finally(() => setSalesByProductLoading(false));
-  }, [companyId, ventesDateFrom, ventesDateTo, tab, canAccessDashboard, setMsg]);
+  }, [companyId, ventesDateFrom, ventesDateTo, tab, canAccessDashboard, canSeeSalesTotals, setMsg]);
+
+  useEffect(() => {
+    if (!canAccessDashboard || companyId === '' || tab !== 'ventes') return;
+    if (!salesRecentMinYmd) return;
+    const { from, to } = clampSalesRangeYmd(txnDateFrom, txnDateTo);
+    if (from !== txnDateFrom || to !== txnDateTo) {
+      setTxnDateFrom(from);
+      setTxnDateTo(to);
+    }
+  }, [tab, companyId, canAccessDashboard, salesRecentMinYmd, txnDateFrom, txnDateTo]);
 
   useEffect(() => {
     if (!canAccessDashboard || companyId === '' || tab !== 'ventes') return;
@@ -1030,8 +1083,15 @@ export function DashboardPage() {
         <>
           {tab === 'ventes' && canSeeSales ? (
             <>
+              {canSeeSalesTotals ? (
               <section className="card" style={{ marginTop: '1rem' }}>
                 <h2>Ventes</h2>
+                {salesRecentMinYmd ? (
+                  <p className="dept-hint" style={{ marginTop: 0 }}>
+                    Totaux limités aux 2 derniers jours (depuis le {salesRecentMinYmd}). L’historique
+                    plus ancien n’est pas accessible pour ce rôle.
+                  </p>
+                ) : null}
                 <div
                   className="form-grid inline"
                   style={{
@@ -1045,7 +1105,13 @@ export function DashboardPage() {
                     <input
                       type="date"
                       value={ventesDateFrom}
-                      onChange={(e) => setVentesDateFrom(e.target.value)}
+                      min={salesRecentMinYmd ?? undefined}
+                      max={formatYmd(new Date())}
+                      onChange={(e) => {
+                        const { from, to } = clampSalesRangeYmd(e.target.value, ventesDateTo);
+                        setVentesDateFrom(from);
+                        setVentesDateTo(to);
+                      }}
                     />
                   </label>
                   <label>
@@ -1053,7 +1119,13 @@ export function DashboardPage() {
                     <input
                       type="date"
                       value={ventesDateTo}
-                      onChange={(e) => setVentesDateTo(e.target.value)}
+                      min={salesRecentMinYmd ?? undefined}
+                      max={formatYmd(new Date())}
+                      onChange={(e) => {
+                        const { from, to } = clampSalesRangeYmd(ventesDateFrom, e.target.value);
+                        setVentesDateFrom(from);
+                        setVentesDateTo(to);
+                      }}
                     />
                   </label>
                   <div style={{ justifySelf: 'start' }}>
@@ -1109,8 +1181,14 @@ export function DashboardPage() {
                   </>
                 )}
               </section>
+              ) : (
+                <p className="info-text" style={{ marginTop: '1rem' }}>
+                  Les totaux de ventes ne sont pas autorisés pour ce rôle. Activez « Voir le total des
+                  ventes (2 derniers jours max) » ou les rapports complets dans Rôles & autorisations.
+                </p>
+              )}
 
-              {ventesDeptModal ? (
+              {ventesDeptModal && canSeeSalesTotals ? (
                 <VentesDepartmentModal
                   label={ventesDeptModal.label}
                   departmentId={ventesDeptModal.departmentId}
@@ -1137,7 +1215,13 @@ export function DashboardPage() {
                     <input
                       type="date"
                       value={txnDateFrom}
-                      onChange={(e) => setTxnDateFrom(e.target.value)}
+                      min={salesRecentMinYmd ?? undefined}
+                      max={formatYmd(new Date())}
+                      onChange={(e) => {
+                        const { from, to } = clampSalesRangeYmd(e.target.value, txnDateTo);
+                        setTxnDateFrom(from);
+                        setTxnDateTo(to);
+                      }}
                     />
                   </label>
                   <label>
@@ -1145,7 +1229,13 @@ export function DashboardPage() {
                     <input
                       type="date"
                       value={txnDateTo}
-                      onChange={(e) => setTxnDateTo(e.target.value)}
+                      min={salesRecentMinYmd ?? undefined}
+                      max={formatYmd(new Date())}
+                      onChange={(e) => {
+                        const { from, to } = clampSalesRangeYmd(txnDateFrom, e.target.value);
+                        setTxnDateFrom(from);
+                        setTxnDateTo(to);
+                      }}
                     />
                   </label>
                 </div>

@@ -10,6 +10,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<{ id: string; label: string; codes
     codes: [
       'sales.create',
       'sales.view',
+      'sales.recent_totals',
       'sales.cancel',
       'sales.delete',
       'sales.special_price',

@@ -17,14 +17,18 @@ Les deux nœuds peuvent écrire hors-ligne ; la réconciliation se fait au retou
 | `updatedAt` / `deletedAt` | LWW (`max`) |
 | `companyUuid`, `departmentUuid`, … | Parents transportés sur le fil ; le nœud cible résout → `companyId` local |
 
-Si un parent requis est introuvable, le push marque `error` et le **curseur n’avance pas** (retry).
+Si un parent requis est introuvable, le push marque `error` sur **cette** ligne.
+Le curseur **avance quand même** (poison pill) pour ne pas geler tout l’historique ;
+un redémarrage de l’agent rejoue depuis epoch et peut récupérer les lignes après arrival des parents.
 
-## Règles par famille
+Le pull utilise un curseur composite `updatedAt|uuid` pour ne pas sauter les lignes
+au même horodatage.
 
-### Ventes (`Sale`, `SaleItem`, `Payment`, `Delivery`) — LWW
+### Ventes — `txnNumber`
 
-- Upsert par `uuid` / `clientUuid` ; `Sale.amountPaid` et soft delete se propagent en LWW (`updatedAt`).
-- Les ventes à crédit portent `creditCustomerUuid` (jamais l’Int local).
+- Requis côté métier (ticket / livraison).
+- Si une Sale arrive en sync **sans** `txnNumber`, le nœud cible la crée puis backfill `txnNumber = id`
+  (évite le blocage historique). Préférer corriger la source (`UPDATE … SET "txnNumber" = id`).
 
 ### Crédit (`CreditCustomer`, `CreditPayment`)
 
@@ -68,7 +72,7 @@ Si un parent requis est introuvable, le push marque `error` et le **curseur n’
 
 ## API
 
-- `GET /sync/pull?entity=&since=` — deltas depuis curseur
+- `GET /sync/pull?entity=&since=` — deltas depuis curseur (`since` = ISO ou `ISO|uuid`)
 - `POST /sync/push` — batch d’enregistrements (`uuid` + payload)
 - Auth : JWT admin/service ou `SYNC_API_KEY` (header `X-Sync-Key`)
 

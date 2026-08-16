@@ -36,17 +36,24 @@ export class SyncService {
       throw new BadRequestException(`Entité sync inconnue: ${entity}`);
     }
     const limit = Math.min(Math.max(take || 200, 1), 1000);
-    const sinceDate = since ? new Date(since) : new Date(0);
-    if (Number.isNaN(sinceDate.getTime())) {
-      throw new BadRequestException('since invalide (ISO 8601 attendu)');
-    }
-
+    const cursor = this.parsePullCursor(since);
     const timeField = entity === 'AuditLog' ? 'createdAt' : 'updatedAt';
+
+    const where =
+      cursor.uuid != null
+        ? {
+            OR: [
+              { [timeField]: { gt: cursor.at } },
+              {
+                AND: [{ [timeField]: cursor.at }, { uuid: { gt: cursor.uuid } }],
+              },
+            ],
+          }
+        : { [timeField]: { gt: cursor.at } };
+
     const rows = await this.delegate(entity).findMany({
-      where: {
-        [timeField]: { gt: sinceDate },
-      },
-      orderBy: { [timeField]: 'asc' },
+      where,
+      orderBy: [{ [timeField]: 'asc' }, { uuid: 'asc' }],
       take: limit,
     });
 
@@ -60,12 +67,44 @@ export class SyncService {
       records.push(await this.toSyncRecord(entity, row));
     }
     const last = rows[rows.length - 1];
-    const nextCursor =
-      last && last[timeField]
-        ? new Date(String(last[timeField])).toISOString()
-        : sinceDate.toISOString();
+    let nextCursor = this.formatPullCursor(cursor.at, cursor.uuid);
+    if (last) {
+      const lastAtRaw = last[timeField] ?? last.createdAt;
+      const lastAt = lastAtRaw ? new Date(String(lastAtRaw)) : cursor.at;
+      const lastUuid = last.uuid != null ? String(last.uuid) : null;
+      if (!Number.isNaN(lastAt.getTime())) {
+        nextCursor = this.formatPullCursor(lastAt, lastUuid);
+      }
+    }
 
     return { entity, records, nextCursor, count: records.length };
+  }
+
+  /** Curseur composite `ISO8601` ou `ISO8601|uuid` (évite les trous à horodatage égal). */
+  private parsePullCursor(since?: string): { at: Date; uuid: string | null } {
+    if (!since?.trim()) {
+      return { at: new Date(0), uuid: null };
+    }
+    const raw = since.trim();
+    const pipe = raw.lastIndexOf('|');
+    if (pipe > 0) {
+      const iso = raw.slice(0, pipe);
+      const uuid = raw.slice(pipe + 1).trim();
+      const at = new Date(iso);
+      if (!Number.isNaN(at.getTime()) && uuid.length > 0) {
+        return { at, uuid };
+      }
+    }
+    const at = new Date(raw);
+    if (Number.isNaN(at.getTime())) {
+      throw new BadRequestException('since invalide (ISO 8601 ou ISO|uuid attendu)');
+    }
+    return { at, uuid: null };
+  }
+
+  private formatPullCursor(at: Date, uuid: string | null): string {
+    const iso = at.toISOString();
+    return uuid ? `${iso}|${uuid}` : iso;
   }
 
   async push(dto: SyncPushDto) {
@@ -311,16 +350,29 @@ export class SyncService {
 
   private async createFromSync(entity: SyncEntityName, record: SyncRecordDto) {
     const data = await this.sanitizePayload(entity, record);
+    let healTxnFromId = false;
     if (entity === 'Sale') {
       const txn = Number(data.txnNumber);
       if (!Number.isFinite(txn) || txn <= 0) {
-        throw new BadRequestException(
-          'Sale sync sans txnNumber — numéro ticket/livraison requis',
+        // Anciennes ventes cloud sans txnNumber : créer puis backfill id (ne plus bloquer le sync).
+        delete data.txnNumber;
+        healTxnFromId = true;
+        this.logger.warn(
+          `Sync Sale ${record.uuid}: txnNumber manquant — création puis backfill id`,
         );
       }
     }
     try {
-      await this.delegate(entity).create({ data });
+      const created = await this.delegate(entity).create({ data });
+      if (healTxnFromId && entity === 'Sale') {
+        const id = Number(created.id);
+        if (Number.isFinite(id) && id > 0) {
+          await this.prisma.sale.update({
+            where: { id },
+            data: { txnNumber: id },
+          });
+        }
+      }
     } catch (err) {
       // Course : fiche créée entre findByNaturalKey et create.
       if (
