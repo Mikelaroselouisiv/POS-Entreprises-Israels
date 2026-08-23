@@ -103,7 +103,7 @@ export async function escPosRasterFromUrl(
   if (!decoded) return null;
 
   const maxDots = paperWidth === 80 ? RASTER_DOTS_80 : RASTER_DOTS_58;
-  const targetW = Math.min(maxDots, decoded.width);
+  let targetW = Math.min(maxDots, decoded.width);
   let targetH = Math.max(1, Math.round((decoded.height * targetW) / decoded.width));
   if (targetH > MAX_HEIGHT) {
     targetH = MAX_HEIGHT;

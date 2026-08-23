@@ -22,7 +22,6 @@ import {
   type SavedPrinter,
   type ThermalPrinterDevice,
 } from '@/services/bluetooth-printer';
-import { AndroidUpdateCard } from '@/components/AndroidUpdateCard';
 import { buildSaleReceiptData } from '@/services/receipt';
 
 const SCAN_MS = 8000;
@@ -244,8 +243,6 @@ export default function PrinterSettingsScreen() {
             <ThemedText style={styles.secondaryButtonText}>Oublier cette imprimante</ThemedText>
           </Pressable>
         ) : null}
-
-        <AndroidUpdateCard />
       </AppScrollView>
     </Screen>
   );

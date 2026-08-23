@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AndroidUpdateCard } from '@/components/AndroidUpdateCard';
 import { BrandLogo } from '@/components/BrandLogo';
 import { BRAND_NAME, BrandColors } from '@/constants/brand';
 import { Spacing } from '@/constants/theme';
@@ -18,6 +19,7 @@ import { useAppShell } from '@/context/AppShellContext';
 import { useAuth } from '@/context/AuthContext';
 import { usePendingSalesCount } from '@/hooks/usePendingSalesCount';
 import { filterMenuItems, MENU_ITEMS } from '@/navigation/menu';
+import { getInstalledAppVersion } from '@/services/app-update';
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Administrateur',
@@ -47,6 +49,7 @@ function AppMenuPanel() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const pendingCount = usePendingSalesCount();
+  const appVersion = getInstalledAppVersion();
 
   const items = useMemo(
     () => filterMenuItems(MENU_ITEMS, { can, canPerm }),
@@ -128,6 +131,12 @@ function AppMenuPanel() {
           <Ionicons name="log-out-outline" size={22} color={BrandColors.danger} />
           <Text style={styles.logoutLabel}>Déconnexion</Text>
         </Pressable>
+        <View style={styles.footer}>
+          <Text style={styles.versionLabel}>
+            Version {appVersion.version} ({appVersion.versionCode})
+          </Text>
+          <AndroidUpdateCard />
+        </View>
       </View>
     </View>
   );
@@ -185,4 +194,10 @@ const styles = StyleSheet.create({
   },
   logoutPressed: { backgroundColor: '#FEF2F2' },
   logoutLabel: { fontSize: 16, fontWeight: '600', color: BrandColors.danger },
+  footer: { alignItems: 'center', gap: 2, paddingTop: Spacing.one },
+  versionLabel: {
+    fontSize: 11,
+    color: BrandColors.textMuted,
+    textAlign: 'center',
+  },
 });

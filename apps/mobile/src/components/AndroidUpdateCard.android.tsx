@@ -5,7 +5,6 @@ import { BrandColors } from '@/constants/brand';
 import { Spacing } from '@/constants/theme';
 import {
   downloadAndInstallAndroidUpdate,
-  getInstalledAppVersion,
   inspectAndroidUpdate,
   isUnknownSourcesError,
   openUnknownSourcesSettings,
@@ -14,8 +13,8 @@ import {
 
 type Phase = 'idle' | 'checking' | 'ready' | 'downloading' | 'installing' | 'current' | 'error';
 
+/** Lien discret pour le pied de page du menu. */
 export function AndroidUpdateCard() {
-  const installed = getInstalledAppVersion();
   const [phase, setPhase] = useState<Phase>('idle');
   const [update, setUpdate] = useState<AndroidUpdateManifest | null>(null);
   const [progress, setProgress] = useState(0);
@@ -34,7 +33,7 @@ export function AndroidUpdateCard() {
       }
       if (result.status === 'current') {
         setPhase('current');
-        setMessage(`Application à jour (${installed.version})`);
+        setMessage('Application à jour');
         return;
       }
       setPhase('error');
@@ -59,7 +58,7 @@ export function AndroidUpdateCard() {
     } catch (err) {
       if (isUnknownSourcesError(err)) {
         setPhase('error');
-        setMessage('Autorisez « Installer des applis inconnues » pour cette application, puis réessayez.');
+        setMessage('Autorisez l’installation pour cette application, puis réessayez.');
         await openUnknownSourcesSettings().catch(() => undefined);
         return;
       }
@@ -70,56 +69,35 @@ export function AndroidUpdateCard() {
 
   const busy = phase === 'checking' || phase === 'downloading' || phase === 'installing';
   const percent = Math.round(progress * 100);
+  const actionLabel =
+    phase === 'ready' && update
+      ? `Mettre à jour vers ${update.version}`
+      : 'Vérifier la mise à jour';
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>Mise à jour de l’application</Text>
-      <Text style={styles.meta}>
-        Version installée : {installed.version} ({installed.versionCode})
-      </Text>
+    <View style={styles.wrap}>
       {message ? <Text style={styles.message}>{message}</Text> : null}
-      {update && phase === 'ready' ? (
-        <Text style={styles.message}>La version {update.version} est disponible.</Text>
-      ) : null}
       {phase === 'downloading' || phase === 'installing' ? (
-        <Text style={styles.meta}>
-          {phase === 'installing' ? 'Ouverture de l’installateur…' : `Téléchargement… ${percent} %`}
+        <Text style={styles.message}>
+          {phase === 'installing' ? 'Installation…' : `Téléchargement ${percent} %`}
         </Text>
       ) : null}
-      {phase === 'ready' && update ? (
-        <Pressable style={styles.button} onPress={() => void startUpdate()} disabled={busy}>
-          <Text style={styles.buttonText}>Mettre à jour vers {update.version}</Text>
-        </Pressable>
-      ) : (
-        <Pressable style={styles.button} onPress={() => void check()} disabled={busy}>
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Vérifier la mise à jour</Text>
-          )}
-        </Pressable>
-      )}
+      <Pressable
+        onPress={() => void (phase === 'ready' ? startUpdate() : check())}
+        disabled={busy}
+        hitSlop={8}>
+        {busy ? (
+          <ActivityIndicator color={BrandColors.textMuted} size="small" />
+        ) : (
+          <Text style={styles.link}>{actionLabel}</Text>
+        )}
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
-    borderWidth: 1,
-    borderColor: BrandColors.borderStrong,
-    backgroundColor: BrandColors.surface,
-  },
-  title: { fontSize: 15, fontWeight: '700', color: BrandColors.text },
-  meta: { fontSize: 13, color: BrandColors.textMuted },
-  message: { fontSize: 14, color: BrandColors.text, lineHeight: 20 },
-  button: {
-    backgroundColor: BrandColors.primary,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  buttonText: { color: '#fff', fontWeight: '700' },
+  wrap: { alignItems: 'center', gap: 4, paddingTop: Spacing.one },
+  link: { fontSize: 11, color: BrandColors.textMuted, textDecorationLine: 'underline' },
+  message: { fontSize: 11, color: BrandColors.textMuted, textAlign: 'center' },
 });
