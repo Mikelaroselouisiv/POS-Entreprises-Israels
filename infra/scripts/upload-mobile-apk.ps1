@@ -103,12 +103,14 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Echec creation latest.apk" }
 
   Assert-IsraelContext
-  & gsutil -h 'Cache-Control:no-cache,max-age=0,must-revalidate' setmeta $LatestApkUri
-  if ($LASTEXITCODE -ne 0) { throw "Echec metadata latest.apk" }
-
-  Assert-IsraelContext
   & gsutil -h 'Cache-Control:no-store,max-age=0' cp $ManifestPath $ManifestUri
   if ($LASTEXITCODE -ne 0) { throw "Echec upload latest.json" }
+
+  Assert-IsraelContext
+  & gsutil setmeta -h 'Cache-Control:no-cache,max-age=0,must-revalidate' $LatestApkUri
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "Avertissement: metadata latest.apk non appliquees (le manifeste est deja en ligne)."
+  }
 
   Write-Host "APK: $PublicBaseUrl/$ObjectName"
   Write-Host "Manifeste: $PublicBaseUrl/latest.json"
