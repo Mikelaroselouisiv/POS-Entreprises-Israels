@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 
+import { AndroidUpdateCard } from '@/components/AndroidUpdateCard';
 import { AppScrollView } from '@/components/AppScrollView';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Screen } from '@/components/Screen';
@@ -108,6 +109,9 @@ export default function LoginScreen() {
               <Text style={styles.buttonText}>Se connecter</Text>
             )}
           </Pressable>
+        </View>
+        <View style={{ marginTop: Spacing.four, paddingHorizontal: Spacing.four }}>
+          <AndroidUpdateCard />
         </View>
       </AppScrollView>
     </Screen>

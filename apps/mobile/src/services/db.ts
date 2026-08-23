@@ -7,8 +7,12 @@ export async function initDb(): Promise<void> {
   if (db) return;
   initPromise ??= (async () => {
     db = await SQLite.openDatabaseAsync('pos-local.db');
+    try {
+      await db.execAsync('PRAGMA journal_mode = WAL;');
+    } catch {
+      await db.execAsync('PRAGMA journal_mode = DELETE;');
+    }
     await db.execAsync(`
-      PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS outbox_sales (
         id TEXT PRIMARY KEY NOT NULL,
         payload_json TEXT NOT NULL,

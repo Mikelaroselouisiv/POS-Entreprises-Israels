@@ -2,14 +2,14 @@
   "expo": {
     "name": "POS Entreprise Israel",
     "slug": "pos-entreprises-israel-mobile",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.entrepriseisrael.pos.mobile",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "appleTeamId": "P227YQ54ZL",
       "infoPlist": {
         "NSAppTransportSecurity": {
@@ -22,7 +22,7 @@
     },
     "android": {
       "package": "com.entrepriseisrael.pos.mobile",
-      "versionCode": 6,
+      "versionCode": 7,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.BLUETOOTH_CONNECT",

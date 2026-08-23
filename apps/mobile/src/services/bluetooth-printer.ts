@@ -104,14 +104,25 @@ export async function saveSelectedPrinter(device: {
   );
 }
 
+export async function getLocalPaperWidth(): Promise<58 | 80> {
+  const row = await getDb().getFirstAsync<{ paper_width: number }>(
+    'SELECT paper_width FROM printer_settings WHERE id = 1',
+  );
+  return row?.paper_width === 80 ? 80 : 58;
+}
+
 export async function savePaperWidth(paperWidth: 58 | 80): Promise<void> {
-  const existing = await getSavedPrinter();
+  const row = await getDb().getFirstAsync<{ id: number }>(
+    'SELECT id FROM printer_settings WHERE id = 1',
+  );
+  if (row) {
+    await getDb().runAsync('UPDATE printer_settings SET paper_width = ? WHERE id = 1', paperWidth);
+    return;
+  }
   await getDb().runAsync(
-    'INSERT OR REPLACE INTO printer_settings (id, device_address, device_name, paper_width, transport) VALUES (1, ?, ?, ?, ?)',
-    existing?.address ?? null,
-    existing?.name ?? null,
+    'INSERT INTO printer_settings (id, device_address, device_name, paper_width, transport) VALUES (1, NULL, NULL, ?, ?)',
     paperWidth,
-    existing?.transport ?? getPlatformTransport(),
+    getPlatformTransport(),
   );
 }
 

@@ -97,8 +97,18 @@ export function getInstalledAppVersion() {
   };
 }
 
-export async function checkForAndroidUpdate(): Promise<AndroidUpdateManifest | null> {
-  if (Platform.OS !== 'android' || __DEV__) return null;
+export type AndroidUpdateCheck =
+  | { status: 'update'; manifest: AndroidUpdateManifest }
+  | { status: 'current' }
+  | { status: 'unavailable'; message: string };
+
+export async function inspectAndroidUpdate(): Promise<AndroidUpdateCheck> {
+  if (Platform.OS !== 'android') {
+    return { status: 'unavailable', message: 'Mise à jour APK réservée à Android' };
+  }
+  if (__DEV__) {
+    return { status: 'unavailable', message: 'Mise à jour indisponible en mode développement' };
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -107,24 +117,33 @@ export async function checkForAndroidUpdate(): Promise<AndroidUpdateManifest | n
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return { status: 'unavailable', message: 'Serveur de mise à jour inaccessible' };
+    }
     const manifest: unknown = await response.json();
-    if (!isManifest(manifest)) return null;
+    if (!isManifest(manifest)) {
+      return { status: 'unavailable', message: 'Manifeste de mise à jour invalide' };
+    }
 
     const installed = getInstalledAppVersion();
-    if (manifest.versionCode > installed.versionCode) return manifest;
+    if (manifest.versionCode > installed.versionCode) return { status: 'update', manifest };
     if (
       manifest.versionCode === installed.versionCode &&
       isVersionNewer(manifest.version, installed.version)
     ) {
-      return manifest;
+      return { status: 'update', manifest };
     }
-    return null;
+    return { status: 'current' };
   } catch {
-    return null;
+    return { status: 'unavailable', message: 'Impossible de vérifier la mise à jour. Vérifiez le réseau.' };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function checkForAndroidUpdate(): Promise<AndroidUpdateManifest | null> {
+  const result = await inspectAndroidUpdate();
+  return result.status === 'update' ? result.manifest : null;
 }
 
 export function isUnknownSourcesError(err: unknown): boolean {

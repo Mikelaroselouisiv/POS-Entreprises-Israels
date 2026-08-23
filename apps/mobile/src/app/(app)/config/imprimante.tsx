@@ -10,6 +10,7 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import {
   clearSavedPrinter,
+  getLocalPaperWidth,
   getSavedPrinter,
   printReceipt,
   requestBluetoothPermissions,
@@ -21,6 +22,7 @@ import {
   type SavedPrinter,
   type ThermalPrinterDevice,
 } from '@/services/bluetooth-printer';
+import { AndroidUpdateCard } from '@/components/AndroidUpdateCard';
 import { buildSaleReceiptData } from '@/services/receipt';
 
 const SCAN_MS = 8000;
@@ -31,12 +33,14 @@ export default function PrinterSettingsScreen() {
 
   const [devices, setDevices] = useState<ThermalPrinterDevice[]>([]);
   const [saved, setSaved] = useState<SavedPrinter | null>(null);
+  const [paperWidth, setPaperWidthState] = useState<58 | 80>(58);
   const [scanning, setScanning] = useState(false);
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   const refreshSaved = useCallback(() => {
     getSavedPrinter().then(setSaved).catch(() => undefined);
+    getLocalPaperWidth().then(setPaperWidthState).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -114,8 +118,13 @@ export default function PrinterSettingsScreen() {
   }
 
   async function setPaperWidth(width: 58 | 80) {
-    await savePaperWidth(width);
-    refreshSaved();
+    setPaperWidthState(width);
+    try {
+      await savePaperWidth(width);
+      setStatus(`Largeur papier : ${width} mm`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Impossible d’enregistrer la largeur papier');
+    }
   }
 
   async function forgetPrinter() {
@@ -180,7 +189,7 @@ export default function PrinterSettingsScreen() {
               <Pressable
                 key={width}
                 onPress={() => setPaperWidth(width)}
-                style={[styles.widthButton, saved?.paperWidth === width && styles.widthButtonActive]}>
+                style={[styles.widthButton, paperWidth === width && styles.widthButtonActive]}>
                 <ThemedText>{width}mm</ThemedText>
               </Pressable>
             ))}
@@ -235,6 +244,8 @@ export default function PrinterSettingsScreen() {
             <ThemedText style={styles.secondaryButtonText}>Oublier cette imprimante</ThemedText>
           </Pressable>
         ) : null}
+
+        <AndroidUpdateCard />
       </AppScrollView>
     </Screen>
   );
