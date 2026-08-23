@@ -74,6 +74,14 @@ export const MENU_ITEMS: MenuItem[] = [
     permission: 'stock.view',
   },
   {
+    key: 'accounting',
+    label: 'Comptabilité',
+    href: '/(app)/accounting',
+    icon: 'book-outline',
+    roles: ['ADMIN', 'ACCOUNTANT'],
+    permission: 'accounting.view',
+  },
+  {
     key: 'config',
     label: 'Configuration',
     href: '/(app)/config',
@@ -86,7 +94,13 @@ export const MENU_ITEMS: MenuItem[] = [
 export const SECTION_TABS: Record<string, SectionTab[]> = {
   pos: [
     { name: 'classic', title: 'Classique', icon: 'grid-outline', permission: 'pos.use' },
-    { name: 'special', title: 'Spéciale', icon: 'sparkles-outline', roles: ['ADMIN', 'MANAGER'] },
+    {
+      name: 'special',
+      title: 'Spéciale',
+      icon: 'sparkles-outline',
+      permission: 'sales.special_price',
+      roles: ['ADMIN', 'MANAGER'],
+    },
   ],
   deliveries: [
     { name: 'all', title: 'Tous', icon: 'list-outline', permission: 'deliveries.view' },
@@ -100,15 +114,27 @@ export const SECTION_TABS: Record<string, SectionTab[]> = {
     },
   ],
   dashboard: [
-    { name: 'synthese', title: 'Synthèse', icon: 'pie-chart-outline', roles: ['ADMIN'] },
+    {
+      name: 'synthese',
+      title: 'Synthèse',
+      icon: 'pie-chart-outline',
+      permission: 'dashboard.synthesis',
+      roles: ['ADMIN'],
+    },
     { name: 'ventes', title: 'Ventes', icon: 'receipt-outline', permission: 'sales.view' },
-    { name: 'stock', title: 'Stock', icon: 'cube-outline', roles: ['ADMIN'] },
+    {
+      name: 'stock',
+      title: 'Stock',
+      icon: 'cube-outline',
+      permission: 'stock.global',
+      roles: ['ADMIN'],
+    },
     {
       name: 'depenses',
       title: 'Dépenses',
       icon: 'cash-outline',
       permission: 'finance.view',
-      roles: ['ADMIN', 'MANAGER'],
+      roles: ['ADMIN'],
     },
     {
       name: 'banque',
@@ -164,6 +190,13 @@ export const SECTION_TABS: Record<string, SectionTab[]> = {
       roles: ['ADMIN', 'MANAGER', 'STOCK_MANAGER'],
     },
     {
+      name: 'familles',
+      title: 'Familles',
+      icon: 'layers-outline',
+      permission: 'products.view',
+      roles: ['ADMIN', 'MANAGER', 'STOCK_MANAGER'],
+    },
+    {
       name: 'harmonisation',
       title: 'Harmonisation',
       icon: 'swap-vertical-outline',
@@ -215,6 +248,29 @@ export const SECTION_TABS: Record<string, SectionTab[]> = {
       roles: ['ADMIN'],
     },
   ],
+  accounting: [
+    {
+      name: 'consulter',
+      title: 'Consulter',
+      icon: 'book-outline',
+      permission: 'accounting.view',
+      roles: ['ADMIN', 'ACCOUNTANT'],
+    },
+    {
+      name: 'saisie',
+      title: 'Saisie OD',
+      icon: 'create-outline',
+      permission: 'accounting.write',
+      roles: ['ADMIN', 'ACCOUNTANT'],
+    },
+    {
+      name: 'plus',
+      title: 'Plus',
+      icon: 'ellipsis-horizontal-outline',
+      permission: 'accounting.view',
+      roles: ['ADMIN', 'ACCOUNTANT'],
+    },
+  ],
 };
 
 export const SECTION_TITLES: Record<string, string> = {
@@ -224,6 +280,7 @@ export const SECTION_TITLES: Record<string, string> = {
   dashboard: 'Tableau de bord',
   credit: 'Crédit',
   stock: 'Stocks',
+  accounting: 'Comptabilité',
   config: 'Configuration',
 };
 
@@ -236,7 +293,7 @@ export function defaultAppHref(role: UserRole | undefined): string {
     case 'STOCK_MANAGER':
       return '/(app)/stock';
     case 'ACCOUNTANT':
-      return '/(app)/dashboard';
+      return '/(app)/accounting';
     case 'ADMIN':
     case 'MANAGER':
     default:
@@ -267,6 +324,20 @@ export function filterMenuItems(items: MenuItem[], access: AccessFns): MenuItem[
 export function canAccessTab(tab: SectionTab, access: AccessFns): boolean {
   const byPerm = tab.permission ? access.canPerm(tab.permission) : false;
   const byRole = tab.roles ? access.can(tab.roles) : false;
+  if (tab.name === 'synthese') {
+    return byRole || access.canPerm('dashboard.synthesis') || access.canPerm('reports.view');
+  }
+  if (tab.name === 'stock' && tab.title === 'Stock') {
+    return byRole || access.canPerm('stock.global') || access.canPerm('reports.view');
+  }
+  if (tab.name === 'depenses') {
+    return (
+      byRole ||
+      access.canPerm('finance.view') ||
+      access.canPerm('finance.write') ||
+      access.canPerm('finance.expense')
+    );
+  }
   if (tab.permission && tab.roles) return byPerm || byRole;
   if (tab.permission) return byPerm;
   if (tab.roles) return byRole;

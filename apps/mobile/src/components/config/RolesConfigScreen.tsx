@@ -25,6 +25,7 @@ import {
   updateRole,
 } from '@/services/api';
 import type { AppRoleRow, PermissionDefinition } from '@/types/api';
+import { PERMISSION_GROUPS } from '@/utils/permissionGroups';
 
 export function RolesConfigScreen() {
   const { can, canPerm } = useAuth();
@@ -71,12 +72,87 @@ export function RolesConfigScreen() {
   }, [allowed]);
 
   function togglePerm(list: string[], code: string, setList: (v: string[]) => void) {
+    if (code === '*') {
+      setList(list.includes('*') ? [] : ['*']);
+      return;
+    }
     if (list.includes('*')) {
       setList(list.filter((p) => p !== '*'));
       return;
     }
     if (list.includes(code)) setList(list.filter((p) => p !== code));
     else setList([...list, code]);
+  }
+
+  function toggleGroup(list: string[], codes: string[], setList: (v: string[]) => void) {
+    if (list.includes('*')) return;
+    const usable = codes.filter((c) => c !== '*');
+    const allOn = usable.length > 0 && usable.every((c) => list.includes(c));
+    if (allOn) setList(list.filter((p) => !usable.includes(p)));
+    else setList([...new Set([...list.filter((p) => p !== '*'), ...usable])]);
+  }
+
+  function groupedPermissions() {
+    const byCode = new Map(permissions.map((p) => [p.code, p]));
+    const used = new Set<string>();
+    const sections: Array<{ id: string; label: string; items: PermissionDefinition[] }> = [];
+    for (const group of PERMISSION_GROUPS) {
+      const items = group.codes
+        .map((code) => byCode.get(code))
+        .filter((p): p is PermissionDefinition => !!p);
+      for (const item of items) used.add(item.code);
+      if (items.length) sections.push({ id: group.id, label: group.label, items });
+    }
+    const orphan = permissions.filter((p) => !used.has(p.code));
+    if (orphan.length) sections.push({ id: 'other', label: 'Autres', items: orphan });
+    return sections;
+  }
+
+  function renderPermissionPicker(list: string[], setList: (v: string[]) => void) {
+    const hasStar = list.includes('*');
+    return (
+      <>
+        <Pressable
+          style={styles.toggle}
+          onPress={() => setList(hasStar ? [] : ['*'])}>
+          <Text style={styles.toggleText}>
+            {hasStar ? '✓ Accès total (*)' : 'Accès total (*)'}
+          </Text>
+        </Pressable>
+        {!hasStar
+          ? groupedPermissions().map((section) => {
+              const codes = section.items.map((p) => p.code).filter((c) => c !== '*');
+              const allOn = codes.length > 0 && codes.every((c) => list.includes(c));
+              return (
+                <View key={section.id} style={styles.groupBlock}>
+                  <View style={styles.groupHead}>
+                    <Text style={styles.groupTitle}>{section.label}</Text>
+                    {codes.length > 0 ? (
+                      <Pressable onPress={() => toggleGroup(list, codes, setList)}>
+                        <Text style={styles.groupToggle}>
+                          {allOn ? '✓ Tout le groupe' : 'Tout le groupe'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {section.items.map((p) => (
+                    <Pressable
+                      key={p.code}
+                      style={styles.permRow}
+                      onPress={() => togglePerm(list, p.code, setList)}>
+                      <Text style={styles.permCheck}>{list.includes(p.code) ? '✓' : '○'}</Text>
+                      <View style={styles.flex}>
+                        <Text style={styles.permLabel}>{p.label}</Text>
+                        <Text style={styles.meta}>{p.code}</Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+              );
+            })
+          : null}
+      </>
+    );
   }
 
   async function saveEdit() {
@@ -217,29 +293,7 @@ export function RolesConfigScreen() {
               value={editLabel}
               onChangeText={setEditLabel}
             />
-            <Pressable
-              style={styles.toggle}
-              onPress={() =>
-                setEditPerms((prev) => (prev.includes('*') ? [] : ['*']))
-              }>
-              <Text style={styles.toggleText}>
-                {editPerms.includes('*') ? '✓ Accès total (*)' : 'Accès total (*)'}
-              </Text>
-            </Pressable>
-            {!editPerms.includes('*')
-              ? permissions.map((p) => (
-                  <Pressable
-                    key={p.code}
-                    style={styles.permRow}
-                    onPress={() => togglePerm(editPerms, p.code, setEditPerms)}>
-                    <Text style={styles.permCheck}>{editPerms.includes(p.code) ? '✓' : '○'}</Text>
-                    <View style={styles.flex}>
-                      <Text style={styles.permLabel}>{p.label}</Text>
-                      <Text style={styles.meta}>{p.code}</Text>
-                    </View>
-                  </Pressable>
-                ))
-              : null}
+            {renderPermissionPicker(editPerms, setEditPerms)}
           </ScrollView>
         }
         footer={
@@ -292,18 +346,7 @@ export function RolesConfigScreen() {
               value={newDesc}
               onChangeText={setNewDesc}
             />
-            {permissions.map((p) => (
-              <Pressable
-                key={p.code}
-                style={styles.permRow}
-                onPress={() => togglePerm(newPerms, p.code, setNewPerms)}>
-                <Text style={styles.permCheck}>{newPerms.includes(p.code) ? '✓' : '○'}</Text>
-                <View style={styles.flex}>
-                  <Text style={styles.permLabel}>{p.label}</Text>
-                  <Text style={styles.meta}>{p.code}</Text>
-                </View>
-              </Pressable>
-            ))}
+            {renderPermissionPicker(newPerms, setNewPerms)}
           </ScrollView>
         }
         footer={
@@ -385,6 +428,23 @@ const styles = StyleSheet.create({
   },
   toggle: { paddingVertical: 8 },
   toggleText: { fontWeight: '700', color: BrandColors.text },
+  groupBlock: {
+    borderWidth: 1,
+    borderColor: BrandColors.border,
+    borderRadius: 12,
+    padding: Spacing.two,
+    gap: 4,
+    backgroundColor: BrandColors.surface,
+  },
+  groupHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  groupTitle: { fontWeight: '800', color: BrandColors.text, fontSize: 14 },
+  groupToggle: { color: BrandColors.primary, fontWeight: '700', fontSize: 12 },
   permRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 6 },
   permCheck: { width: 22, fontWeight: '700', color: BrandColors.primary, fontSize: 16 },
   permLabel: { fontWeight: '600', color: BrandColors.text },

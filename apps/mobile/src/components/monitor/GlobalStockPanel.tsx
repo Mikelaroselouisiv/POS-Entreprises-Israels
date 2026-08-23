@@ -114,7 +114,11 @@ export function GlobalStockPanel({ companyId, refreshKey }: Props) {
       {filtersOpen ? (
         <View style={styles.filters}>
           <Text style={styles.filterLabel}>Département</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={styles.chips}>
             <FilterChip label="Tous" active={departmentId == null} onPress={() => setDepartmentId(null)} />
             {departments.map((department) => (
               <FilterChip

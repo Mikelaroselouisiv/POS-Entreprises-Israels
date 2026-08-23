@@ -5,13 +5,13 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
 import { MoneyText } from '@/components/MoneyText';
+import { ChipScroll } from '@/components/ChipScroll';
 import { KpiCard } from '@/components/monitor/KpiCard';
 import { PeriodChips } from '@/components/monitor/PeriodChips';
 import { SaleDetailModal } from '@/components/monitor/SaleDetailModal';
@@ -32,12 +32,15 @@ import {
 } from '@/services/api';
 import type { DashboardSalesByProductRow, Sale } from '@/types/api';
 import {
+  addDaysYmd,
   businessDayEndIso,
   businessDayStartIso,
+  businessTodayYmd,
   formatDateTime,
   periodDateRange,
   type PeriodKey,
 } from '@/utils/datetime';
+import { saleDisplayRef } from '@/utils/saleRef';
 import { formatQuantity } from '@/utils/quantity';
 
 type DepartmentGroup = {
@@ -64,12 +67,22 @@ export default function VentesScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const canManageSales = can(['ADMIN', 'MANAGER']) || canPerm('sales.cancel');
-  const canDeleteSales = can(['ADMIN']);
+  const canDeleteSales = can(['ADMIN']) || canPerm('sales.delete');
+  const canSeeUnlimitedSalesRange = can(['ADMIN']) || canPerm('reports.view');
+  const canSeeSalesTotals = canSeeUnlimitedSalesRange || canPerm('sales.recent_totals');
+  const salesRecentMinYmd =
+    canSeeUnlimitedSalesRange || !canSeeSalesTotals ? null : addDaysYmd(businessTodayYmd(), -1);
 
   const load = useCallback(async (offset = 0) => {
     if (companyId == null) return;
     const append = offset > 0;
-    const { dateFrom, dateTo } = periodDateRange(period);
+    const rawRange = periodDateRange(period);
+    const today = businessTodayYmd();
+    const dateFrom =
+      salesRecentMinYmd && rawRange.dateFrom < salesRecentMinYmd
+        ? salesRecentMinYmd
+        : rawRange.dateFrom;
+    const dateTo = salesRecentMinYmd && rawRange.dateTo > today ? today : rawRange.dateTo;
     try {
       setError(null);
       const [products, salesRes] = await Promise.all([
@@ -93,7 +106,7 @@ export default function VentesScreen() {
         setSalesTotal(0);
       }
     }
-  }, [companyId, period]);
+  }, [companyId, period, salesRecentMinYmd]);
 
   useFocusEffect(
     useCallback(() => {
@@ -131,7 +144,14 @@ export default function VentesScreen() {
   }, [byProduct]);
 
   const grandTotal = byProduct.reduce((s, r) => s + Number(r.totalSubtotal || 0), 0);
-  const { dateFrom, dateTo } = periodDateRange(period);
+  const rawDisplayRange = periodDateRange(period);
+  const todayYmd = businessTodayYmd();
+  const dateFrom =
+    salesRecentMinYmd && rawDisplayRange.dateFrom < salesRecentMinYmd
+      ? salesRecentMinYmd
+      : rawDisplayRange.dateFrom;
+  const dateTo =
+    salesRecentMinYmd && rawDisplayRange.dateTo > todayYmd ? todayYmd : rawDisplayRange.dateTo;
 
   async function openSale(id: number) {
     setDetailLoading(true);
@@ -157,18 +177,18 @@ export default function VentesScreen() {
       kind === 'cancel'
         ? {
             title: 'Annuler la vente',
-            message: `Annuler la vente #${sale.id} et rétablir son stock ?`,
+            message: `Annuler la vente #${saleDisplayRef(sale)} et rétablir son stock ?`,
             button: 'Annuler la vente',
           }
         : kind === 'refund'
           ? {
               title: 'Rembourser la vente',
-              message: `Rembourser la vente #${sale.id} et rétablir son stock ?`,
+              message: `Rembourser la vente #${saleDisplayRef(sale)} et rétablir son stock ?`,
               button: 'Rembourser',
             }
           : {
               title: 'Suppression définitive',
-              message: `Supprimer définitivement la vente #${sale.id} ? Cette action est irréversible.`,
+              message: `Supprimer définitivement la vente #${saleDisplayRef(sale)} ? Cette action est irréversible.`,
               button: 'Supprimer',
             };
     Alert.alert(copy.title, copy.message, [
@@ -201,10 +221,7 @@ export default function VentesScreen() {
     <Screen>
       <RefreshableScroll refreshing={refreshing} onRefresh={onRefresh}>
         {!lockedToSession && companies.length > 1 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.companyRow}>
+          <ChipScroll>
             {companies.map((c) => (
               <Pressable
                 key={c.id}
@@ -220,10 +237,15 @@ export default function VentesScreen() {
                 </Text>
               </Pressable>
             ))}
-          </ScrollView>
+          </ChipScroll>
         ) : null}
 
         <PeriodChips value={period} onChange={setPeriod} />
+        {salesRecentMinYmd ? (
+          <Text style={styles.sectionHint}>
+            Totaux limités aux 2 derniers jours (depuis {salesRecentMinYmd}, fuseau Port-au-Prince).
+          </Text>
+        ) : null}
         <View style={styles.viewSwitch}>
           <Pressable
             style={[styles.viewButton, view === 'departments' && styles.viewButtonActive]}
@@ -350,7 +372,7 @@ export default function VentesScreen() {
                     onPress={() => void openSale(sale.id)}>
                     <View style={styles.saleTop}>
                       <View style={styles.saleRefWrap}>
-                        <Text style={styles.saleRef}>#{sale.id}</Text>
+                        <Text style={styles.saleRef}>#{saleDisplayRef(sale)}</Text>
                         <View style={[styles.statusBadge, statusTone]}>
                           <Text style={styles.statusText}>{statusLabel}</Text>
                         </View>
@@ -407,7 +429,6 @@ export default function VentesScreen() {
 }
 
 const styles = StyleSheet.create({
-  companyRow: { gap: Spacing.two, paddingBottom: Spacing.two },
   companyChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -416,6 +437,9 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.borderStrong,
     backgroundColor: BrandColors.surface,
     maxWidth: 200,
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   companyChipActive: { backgroundColor: BrandColors.primary, borderColor: BrandColors.primary },
   companyChipText: { fontWeight: '600', color: BrandColors.text, fontSize: 13 },

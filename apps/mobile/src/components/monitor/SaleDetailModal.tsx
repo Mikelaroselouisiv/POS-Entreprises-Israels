@@ -7,7 +7,9 @@ import { BrandColors } from '@/constants/brand';
 import { Spacing } from '@/constants/theme';
 import type { Sale } from '@/types/api';
 import { formatDateTime } from '@/utils/datetime';
+import { paymentMethodLabel } from '@/utils/paymentLabels';
 import { formatQuantity } from '@/utils/quantity';
+import { saleDisplayRef } from '@/utils/saleRef';
 
 type Props = {
   sale: Sale | null;
@@ -27,20 +29,7 @@ const STATUS_LABEL: Record<Sale['status'], string> = {
 };
 
 function paymentLabel(method: string) {
-  switch (method) {
-    case 'CASH':
-      return 'Espèces';
-    case 'CARD':
-      return 'Carte';
-    case 'MOBILE_MONEY':
-      return 'Mobile';
-    case 'SPLIT':
-      return 'Mixte';
-    case 'CREDIT':
-      return 'Crédit';
-    default:
-      return method;
-  }
+  return paymentMethodLabel(method);
 }
 
 export function SaleDetailModal({
@@ -143,7 +132,9 @@ export function SaleDetailModal({
       <View style={styles.header}>
         <View style={styles.headerInfo}>
           <Text style={styles.eyebrow}>TRANSACTION DE VENTE</Text>
-          <Text style={styles.title}>Vente #{sale?.id ?? ''}</Text>
+          <Text style={styles.title}>
+            Vente #{sale ? saleDisplayRef(sale) : ''}
+          </Text>
           <Text style={styles.date}>{formatDateTime(sale?.createdAt)}</Text>
         </View>
         <Pressable onPress={onClose} disabled={busy} hitSlop={12}>

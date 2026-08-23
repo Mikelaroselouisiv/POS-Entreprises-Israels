@@ -16,7 +16,9 @@ import { Screen } from '@/components/Screen';
 import { BrandColors } from '@/constants/brand';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { getDeliveryById, listDeliveries, updateDelivery } from '@/services/api';
+import { getDeliveryById, getSaleById, listDeliveries, updateDelivery } from '@/services/api';
+import { printReceipt } from '@/services/bluetooth-printer';
+import { buildSaleReceiptDataFromSale } from '@/services/receipt';
 import type { Delivery, DeliveryStatus } from '@/types/api';
 import { formatDateTime, formatMoney } from '@/utils/datetime';
 import { formatQuantity } from '@/utils/quantity';
@@ -55,6 +57,7 @@ export function DeliveriesListScreen({ status }: Props) {
   const [qtyDrafts, setQtyDrafts] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<number | null>(null);
 
   const load = useCallback(
     async (opts?: { append?: boolean; currentCount?: number }) => {
@@ -114,6 +117,35 @@ export function DeliveriesListScreen({ status }: Props) {
       );
     } catch {
       setError('Impossible d’ouvrir la fiche');
+    }
+  }
+
+  async function reprintDelivery(delivery: Delivery) {
+    const saleId = delivery.sale?.id ?? delivery.saleId;
+    if (!saleId) {
+      setError('Vente introuvable pour impression');
+      return;
+    }
+    setPrintingId(delivery.id);
+    setDetailError(null);
+    try {
+      const sale = await getSaleById(saleId);
+      const departmentId =
+        delivery.departmentId ??
+        sale.items?.[0]?.product?.departmentId ??
+        (typeof user?.departmentId === 'number' ? user.departmentId : undefined);
+      const receipt = await buildSaleReceiptDataFromSale(sale, departmentId);
+      await printReceipt(receipt);
+      setError(null);
+      if (detail?.id === delivery.id) {
+        setDetailError(null);
+      }
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : 'Impossible de réimprimer la fiche';
+      if (detail?.id === delivery.id) setDetailError(reason);
+      else setError(reason);
+    } finally {
+      setPrintingId(null);
     }
   }
 
@@ -182,32 +214,47 @@ export function DeliveriesListScreen({ status }: Props) {
         ListFooterComponent={
           loadingMore ? <ActivityIndicator color={BrandColors.primary} style={{ margin: 12 }} /> : null
         }
-        renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => void openDetail(item)}>
-            <View style={styles.cardTop}>
-              <Text style={styles.cardRef}>
-                Vente #{item.saleRef ?? item.sale?.txnNumber ?? item.sale?.id ?? item.saleId}
-              </Text>
-              <View style={[styles.badge, { backgroundColor: `${STATUS_COLOR[item.status]}22` }]}>
-                <Text style={[styles.badgeText, { color: STATUS_COLOR[item.status] }]}>
-                  {STATUS_LABEL[item.status]}
+        renderItem={({ item }) => {
+          const busyPrint = printingId === item.id;
+          return (
+            <View style={styles.card}>
+              <Pressable onPress={() => void openDetail(item)}>
+                <View style={styles.cardTop}>
+                  <Text style={styles.cardRef}>
+                    Vente #{item.saleRef ?? item.sale?.txnNumber ?? item.sale?.id ?? item.saleId}
+                  </Text>
+                  <View style={[styles.badge, { backgroundColor: `${STATUS_COLOR[item.status]}22` }]}>
+                    <Text style={[styles.badgeText, { color: STATUS_COLOR[item.status] }]}>
+                      {STATUS_LABEL[item.status]}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.client} numberOfLines={2}>
+                  {item.sale?.clientName?.trim() || 'Client'}
                 </Text>
-              </View>
+                <Text style={styles.meta} numberOfLines={2}>
+                  {[item.company?.name, item.department?.name].filter(Boolean).join(' · ') || '—'}
+                </Text>
+                <View style={styles.cardFoot}>
+                  <Text style={styles.meta}>
+                    {formatDateTime(item.sale?.createdAt ?? item.createdAt)}
+                  </Text>
+                  <MoneyText value={item.sale?.total} style={styles.total} />
+                </View>
+              </Pressable>
+              <Pressable
+                style={[styles.cardPrintBtn, (busyPrint || printingId != null) && styles.disabled]}
+                disabled={busyPrint || printingId != null}
+                onPress={() => void reprintDelivery(item)}>
+                {busyPrint ? (
+                  <ActivityIndicator color={BrandColors.primary} />
+                ) : (
+                  <Text style={styles.cardPrintText}>Imprimer</Text>
+                )}
+              </Pressable>
             </View>
-            <Text style={styles.client} numberOfLines={2}>
-              {item.sale?.clientName?.trim() || 'Client'}
-            </Text>
-            <Text style={styles.meta} numberOfLines={2}>
-              {[item.company?.name, item.department?.name].filter(Boolean).join(' · ') || '—'}
-            </Text>
-            <View style={styles.cardFoot}>
-              <Text style={styles.meta}>
-                {formatDateTime(item.sale?.createdAt ?? item.createdAt)}
-              </Text>
-              <MoneyText value={item.sale?.total} style={styles.total} />
-            </View>
-          </Pressable>
-        )}
+          );
+        }}
       />
 
       <ModalShell
@@ -278,6 +325,16 @@ export function DeliveriesListScreen({ status }: Props) {
               <View style={styles.footerActions}>
                 <Pressable style={styles.secondaryBtn} onPress={() => setDetail(null)}>
                   <Text style={styles.secondaryBtnText}>Fermer</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.secondaryBtn, printingId != null && styles.disabled]}
+                  disabled={printingId != null || saving}
+                  onPress={() => void reprintDelivery(detail)}>
+                  {printingId === detail.id ? (
+                    <ActivityIndicator color={BrandColors.text} />
+                  ) : (
+                    <Text style={styles.secondaryBtnText}>Réimprimer fiche</Text>
+                  )}
                 </Pressable>
                 {canManage && detail.status !== 'DELIVERED' ? (
                   <>
@@ -362,6 +419,16 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     gap: 6,
   },
+  cardPrintBtn: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: BrandColors.borderStrong,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    backgroundColor: BrandColors.surfaceSoft,
+  },
+  cardPrintText: { fontWeight: '700', color: BrandColors.text },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardRef: { fontSize: 16, fontWeight: '700', color: BrandColors.text },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },

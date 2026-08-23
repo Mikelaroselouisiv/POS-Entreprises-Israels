@@ -23,10 +23,17 @@ import {
   getCompanies,
   getDepartments,
   getPackagingUnits,
+  getProductFamilies,
   getProducts,
   updateProduct,
 } from '@/services/api';
-import type { CompanyListItem, Department, PackagingUnit, Product } from '@/types/api';
+import type {
+  CompanyListItem,
+  Department,
+  PackagingUnit,
+  Product,
+  ProductFamily,
+} from '@/types/api';
 import { formatMoney } from '@/utils/datetime';
 import { defaultUnitPrice, stockPackagingLabel } from '@/utils/packaging';
 import { formatQuantity } from '@/utils/quantity';
@@ -70,6 +77,8 @@ export function ProductsCatalogScreen() {
   const [editName, setEditName] = useState('');
   const [editPrice, setEditPrice] = useState('');
   const [editColor, setEditColor] = useState(DEFAULT_CARD_COLOR);
+  const [editFamilies, setEditFamilies] = useState<ProductFamily[]>([]);
+  const [editFamilyId, setEditFamilyId] = useState<number | ''>('');
 
   const [showCreate, setShowCreate] = useState(false);
   const [createCompanyId, setCreateCompanyId] = useState<number | ''>('');
@@ -80,6 +89,8 @@ export function ProductsCatalogScreen() {
   const [createName, setCreateName] = useState('');
   const [createPrice, setCreatePrice] = useState('');
   const [createColor, setCreateColor] = useState(DEFAULT_CARD_COLOR);
+  const [createFamilies, setCreateFamilies] = useState<ProductFamily[]>([]);
+  const [createFamilyId, setCreateFamilyId] = useState<number | ''>('');
 
   const load = useCallback(async () => {
     if (!allowed) return;
@@ -119,6 +130,8 @@ export function ProductsCatalogScreen() {
     if (createCompanyId === '') {
       setCreateDepts([]);
       setCreateDeptId('');
+      setCreateFamilies([]);
+      setCreateFamilyId('');
       return;
     }
     void getDepartments(createCompanyId).then((d) => {
@@ -128,6 +141,17 @@ export function ProductsCatalogScreen() {
         return d[0]?.id ?? '';
       });
     });
+    void getProductFamilies(createCompanyId)
+      .then((rows) => {
+        setCreateFamilies(rows);
+        setCreateFamilyId((previous) =>
+          previous !== '' && rows.some((family) => family.id === previous) ? previous : '',
+        );
+      })
+      .catch(() => {
+        setCreateFamilies([]);
+        setCreateFamilyId('');
+      });
   }, [createCompanyId]);
 
   useEffect(() => {
@@ -173,6 +197,15 @@ export function ProductsCatalogScreen() {
     const price = defaultUnitPrice(p);
     setEditPrice(price != null ? String(price) : '');
     setEditColor(p.cardColor?.trim() || DEFAULT_CARD_COLOR);
+    setEditFamilyId(p.productFamilyId ?? p.productFamily?.id ?? '');
+    const productCompanyId = p.companyId ?? p.company?.id;
+    if (productCompanyId != null) {
+      void getProductFamilies(productCompanyId)
+        .then(setEditFamilies)
+        .catch(() => setEditFamilies([]));
+    } else {
+      setEditFamilies([]);
+    }
     setStatus(null);
   }
 
@@ -194,6 +227,7 @@ export function ProductsCatalogScreen() {
         name,
         salePrice: price,
         cardColor: editColor,
+        productFamilyId: editFamilyId === '' ? null : editFamilyId,
       });
       setEdit(null);
       setStatus('Produit mis à jour');
@@ -223,12 +257,14 @@ export function ProductsCatalogScreen() {
         cardColor: createColor,
         companyId: createCompanyId,
         departmentId: createDeptId,
+        productFamilyId: createFamilyId === '' ? null : createFamilyId,
         trackStock: true,
         saleUnits: [{ packagingUnitId: packId, salePrice: price, isDefault: true }],
       });
       setCreateName('');
       setCreatePrice('');
       setCreateColor(DEFAULT_CARD_COLOR);
+      setCreateFamilyId('');
       setShowCreate(false);
       setStatus('Produit créé');
       await load();
@@ -360,6 +396,9 @@ export function ProductsCatalogScreen() {
               <Text style={styles.meta}>
                 {p.company?.name ?? '—'} · {p.department?.name ?? '—'} · {stockPackagingLabel(p)}
               </Text>
+              {p.productFamily?.name ? (
+                <Text style={styles.meta}>Famille : {p.productFamily.name}</Text>
+              ) : null}
               <Text style={styles.meta}>SKU {p.sku ?? '—'}</Text>
               <Text style={styles.amounts}>
                 {price != null ? formatMoney(price) : '—'} · Stock {formatQuantity(p.stock)}
@@ -418,6 +457,22 @@ export function ProductsCatalogScreen() {
                   label={`${u.label} (${u.code})`}
                   active={packId === u.id}
                   onPress={() => setPackId(u.id)}
+                />
+              ))}
+            </ScrollView>
+            <Text style={styles.fieldLabel}>Famille de produits</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
+              <Chip
+                label="Aucune"
+                active={createFamilyId === ''}
+                onPress={() => setCreateFamilyId('')}
+              />
+              {createFamilies.map((family) => (
+                <Chip
+                  key={family.id}
+                  label={family.name}
+                  active={createFamilyId === family.id}
+                  onPress={() => setCreateFamilyId(family.id)}
                 />
               ))}
             </ScrollView>
@@ -494,6 +549,22 @@ export function ProductsCatalogScreen() {
               value={editPrice}
               onChangeText={setEditPrice}
             />
+            <Text style={styles.fieldLabel}>Famille de produits</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
+              <Chip
+                label="Aucune"
+                active={editFamilyId === ''}
+                onPress={() => setEditFamilyId('')}
+              />
+              {editFamilies.map((family) => (
+                <Chip
+                  key={family.id}
+                  label={family.name}
+                  active={editFamilyId === family.id}
+                  onPress={() => setEditFamilyId(family.id)}
+                />
+              ))}
+            </ScrollView>
             <Text style={styles.fieldLabel}>Couleur caisse</Text>
             <View style={styles.colorRow}>
               {COLOR_PRESETS.map((c) => (

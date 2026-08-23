@@ -23,10 +23,12 @@ import {
 } from '@/services/api';
 import type {
   InventoryCountSheetRow,
+  RegisterClosingCashPreview,
   RegisterInventoryLinePayload,
   RegisterListItem,
   RegisterSessionDetail,
 } from '@/types/api';
+import { formatMoney } from '@/utils/datetime';
 
 type PanelMode = 'open' | 'close' | null;
 
@@ -63,6 +65,7 @@ export function RegisterSessionBar({
   const [openingCash, setOpeningCash] = useState('');
   const [closingExpected, setClosingExpected] = useState('');
   const [closingCounted, setClosingCounted] = useState('');
+  const [closingPreview, setClosingPreview] = useState<RegisterClosingCashPreview | null>(null);
 
   const refreshSession = useCallback(async () => {
     const active = await getActiveRegisterSession();
@@ -102,8 +105,10 @@ export function RegisterSessionBar({
 
       if (mode === 'open') {
         setOpeningCash('');
+        setClosingPreview(null);
       } else if (session) {
         const preview = await getRegisterClosingCashPreview(session.id);
+        setClosingPreview(preview);
         setClosingExpected(String(preview.expected));
         setClosingCounted(String(preview.expected));
       }
@@ -271,6 +276,50 @@ export function RegisterSessionBar({
                   </>
                 ) : (
                   <>
+                    {closingPreview ? (
+                      <View style={styles.breakdown}>
+                        <View style={styles.breakdownRow}>
+                          <Text style={styles.breakdownLabel}>Fond d’ouverture</Text>
+                          <Text style={styles.breakdownValue}>
+                            {formatMoney(closingPreview.openingCash)}
+                          </Text>
+                        </View>
+                        <View style={styles.breakdownRow}>
+                          <Text style={styles.breakdownLabel}>Total ventes (session)</Text>
+                          <Text style={styles.breakdownValue}>
+                            {formatMoney(closingPreview.salesTotal ?? closingPreview.salesCash)}
+                          </Text>
+                        </View>
+                        <View style={styles.breakdownRow}>
+                          <Text style={styles.breakdownLabel}>Dont encaissements espèces</Text>
+                          <Text style={styles.breakdownValue}>
+                            {formatMoney(closingPreview.salesCash)}
+                          </Text>
+                        </View>
+                        {closingPreview.unsettledChange > 0.009 ? (
+                          <View style={styles.breakdownRow}>
+                            <Text style={styles.breakdownLabel}>Monnaie non rendue</Text>
+                            <Text style={styles.breakdownValue}>
+                              {formatMoney(closingPreview.unsettledChange)}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {closingPreview.expenses > 0.009 ? (
+                          <View style={styles.breakdownRow}>
+                            <Text style={styles.breakdownLabel}>Dépenses</Text>
+                            <Text style={styles.breakdownValue}>
+                              −{formatMoney(closingPreview.expenses)}
+                            </Text>
+                          </View>
+                        ) : null}
+                        <View style={[styles.breakdownRow, styles.breakdownExpected]}>
+                          <Text style={styles.breakdownLabel}>Espèces attendues</Text>
+                          <Text style={styles.breakdownValue}>
+                            {formatMoney(closingPreview.expected)}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
                     <Text style={styles.fieldLabel}>Espèces attendues</Text>
                     <TextInput
                       style={styles.fieldInput}
@@ -413,6 +462,22 @@ const styles = StyleSheet.create({
     color: BrandColors.text,
   },
   hint: { color: BrandColors.textMuted, fontSize: 14 },
+  breakdown: {
+    borderWidth: 1,
+    borderColor: BrandColors.border,
+    backgroundColor: BrandColors.surfaceSoft,
+    borderRadius: 12,
+    padding: Spacing.three,
+    gap: 8,
+  },
+  breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  breakdownExpected: {
+    borderTopWidth: 1,
+    borderTopColor: BrandColors.border,
+    paddingTop: 8,
+  },
+  breakdownLabel: { color: BrandColors.textMuted, fontSize: 13, flex: 1 },
+  breakdownValue: { color: BrandColors.text, fontWeight: '700', fontSize: 13 },
   countRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -2,6 +2,7 @@ import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
+import { AndroidUpdatePrompt } from '@/components/AndroidUpdatePrompt';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { onReconnect } from '@/services/net';
 import { syncSalesQueue } from '@/services/offline-queue';
@@ -40,10 +41,13 @@ function RootNavigator() {
   }, []);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="login" />
-      <Stack.Screen name="(app)" />
-    </Stack>
+    <>
+      <AndroidUpdatePrompt />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="login" />
+        <Stack.Screen name="(app)" />
+      </Stack>
+    </>
   );
 }
 

@@ -19,6 +19,14 @@ Ne pas utiliser le fuseau OS de la machine ni UTC pour l’UI ou les filtres « 
 
 Voir `apps/backend/src/common/time/timezone.ts` et `apps/desktop/src/renderer/utils/datetime.ts`.
 
+## Agent rattrapage mobile ← desktop
+
+Plan point-par-point pour aligner `apps/mobile` sur le desktop :
+
+- Skill : `.cursor/skills/mobile-parity-desktop/SKILL.md`
+- Checklist : `.cursor/skills/mobile-parity-desktop/checklist.md`
+- Status : `.cursor/skills/mobile-parity-desktop/scripts/status.sh`
+
 ## Agent post-modification (release)
 
 Après des changements terminés, l’agent de suivi gère versioning, build, commit/push, GCP et backups.
@@ -27,3 +35,8 @@ Après des changements terminés, l’agent de suivi gère versioning, build, co
 - Skill : `.cursor/skills/post-change-release/SKILL.md`
 - GitHub ops : remote **`israels`** (`POS-Entreprises-Israels`) — pas `origin`
 - Sur cette machine : **backend + desktop Remote/Server** ; mobile = **backup download-only**, jamais publier/écraser l’app mobile online
+
+## Mises à jour APK Android (in-app)
+
+Téléchargement + install **dans l’app** (pas un lien navigateur). Skill :
+`.cursor/skills/android-in-app-apk-update/SKILL.md`

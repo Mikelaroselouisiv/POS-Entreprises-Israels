@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useState, type ComponentProps } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { ChipScroll } from '@/components/ChipScroll';
 
 import { AuditJournalPanel } from '@/components/monitor/AuditJournalPanel';
 import { KpiCard } from '@/components/monitor/KpiCard';
@@ -19,7 +21,9 @@ import type { DashboardBalanceSnapshot, DashboardSalesByProductRow } from '@/typ
 import { periodDateRange, type PeriodKey } from '@/utils/datetime';
 
 export default function SyntheseScreen() {
-  const { can } = useAuth();
+  const { can, canPerm } = useAuth();
+  const canSeeSynthesis =
+    can(['ADMIN']) || canPerm('dashboard.synthesis') || canPerm('reports.view');
   const { companyId, companies, setCompanyId, ready, lockedToSession } = useCompanyScope();
   const [period, setPeriod] = useState<PeriodKey>('week');
   const [snapshot, setSnapshot] = useState<DashboardBalanceSnapshot | null>(null);
@@ -30,7 +34,7 @@ export default function SyntheseScreen() {
   const [view, setView] = useState<'overview' | 'sessions' | 'audit'>('overview');
 
   const load = useCallback(async () => {
-    if (!can(['ADMIN']) || companyId == null) return;
+    if (!canSeeSynthesis || companyId == null) return;
     const { dateFrom, dateTo } = periodDateRange(period);
     try {
       setError(null);
@@ -49,7 +53,7 @@ export default function SyntheseScreen() {
       setSnapshot(null);
       setTopProducts([]);
     }
-  }, [can, companyId, period]);
+  }, [canSeeSynthesis, companyId, period]);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,11 +69,13 @@ export default function SyntheseScreen() {
     setRefreshing(false);
   }
 
-  if (!can(['ADMIN'])) {
+  if (!canSeeSynthesis) {
     return (
       <Screen>
         <View style={styles.blocked}>
-          <Text style={styles.blockedText}>Synthèse réservée aux administrateurs.</Text>
+          <Text style={styles.blockedText}>
+            Synthèse réservée aux comptes avec dashboard.synthesis ou reports.view.
+          </Text>
         </View>
       </Screen>
     );
@@ -79,10 +85,7 @@ export default function SyntheseScreen() {
     <Screen>
       <RefreshableScroll refreshing={refreshing} onRefresh={onRefresh}>
         {!lockedToSession && companies.length > 1 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.companyRow}>
+          <ChipScroll>
             {companies.map((c) => (
               <Pressable
                 key={c.id}
@@ -98,7 +101,7 @@ export default function SyntheseScreen() {
                 </Text>
               </Pressable>
             ))}
-          </ScrollView>
+          </ChipScroll>
         ) : null}
 
         <PeriodChips value={period} onChange={setPeriod} />
@@ -193,7 +196,6 @@ function ViewSwitchButton({
 const styles = StyleSheet.create({
   blocked: { flex: 1, justifyContent: 'center', padding: Spacing.five },
   blockedText: { textAlign: 'center', color: BrandColors.textMuted },
-  companyRow: { gap: Spacing.two, paddingBottom: Spacing.two },
   companyChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -202,6 +204,9 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.borderStrong,
     backgroundColor: BrandColors.surface,
     maxWidth: 200,
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   companyChipActive: { backgroundColor: BrandColors.primary, borderColor: BrandColors.primary },
   companyChipText: { fontWeight: '600', color: BrandColors.text, fontSize: 13 },

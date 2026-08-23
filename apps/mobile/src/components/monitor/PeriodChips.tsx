@@ -42,6 +42,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BrandColors.borderStrong,
     backgroundColor: BrandColors.surface,
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
   },
   chipActive: {
     backgroundColor: BrandColors.primary,

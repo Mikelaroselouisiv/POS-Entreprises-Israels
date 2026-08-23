@@ -7,10 +7,12 @@ import { filterTabsForAccess, type SectionTab } from '@/navigation/menu';
 
 type SectionTabsLayoutProps = {
   tabs: SectionTab[];
+  /** Routes Expo présentes dans le dossier mais hors barre d’onglets. */
+  hiddenScreens?: string[];
 };
 
 /** Onglets bas de page pour une section (parité desktop). */
-export function SectionTabsLayout({ tabs }: SectionTabsLayoutProps) {
+export function SectionTabsLayout({ tabs, hiddenScreens = [] }: SectionTabsLayoutProps) {
   const { can, canPerm } = useAuth();
   const visible = filterTabsForAccess(tabs, { can, canPerm });
 
@@ -27,6 +29,9 @@ export function SectionTabsLayout({ tabs }: SectionTabsLayoutProps) {
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}>
       <Tabs.Screen name="index" options={{ href: null }} />
+      {hiddenScreens.map((name) => (
+        <Tabs.Screen key={name} name={name} options={{ href: null }} />
+      ))}
       {tabs.map((tab) => {
         const show = visible.some((t) => t.name === tab.name);
         return (

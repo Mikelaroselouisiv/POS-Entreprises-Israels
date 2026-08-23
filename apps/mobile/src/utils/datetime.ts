@@ -2,10 +2,10 @@
 export const APP_TIMEZONE = 'America/Port-au-Prince';
 
 export function formatDateTime(value: Date | string | number | null | undefined): string {
-  if (value == null || value === '') return '—';
+  if (value == null || value === '') return '-';
   const d = value instanceof Date ? value : new Date(value);
-  if (!Number.isFinite(d.getTime())) return '—';
-  return new Intl.DateTimeFormat('fr-HT', {
+  if (!Number.isFinite(d.getTime())) return '-';
+  const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: APP_TIMEZONE,
     day: '2-digit',
     month: '2-digit',
@@ -13,7 +13,9 @@ export function formatDateTime(value: Date | string | number | null | undefined)
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  }).format(d);
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`;
 }
 
 export const CURRENCY_CODE = 'HTG';
@@ -112,4 +114,21 @@ export function businessDayStartIso(ymd: string): string {
 
 export function businessDayEndIso(ymd: string): string {
   return businessDateTimeIso(ymd, true);
+}
+
+/** Date métier AAAA-MM-JJ extraite d’un ISO (sans tiret orphelin). */
+export function ymdFromIso(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.slice(0, 10);
+}
+
+export function addDaysYmd(ymd: string, days: number): string {
+  const start = businessDayStartIso(ymd);
+  const noon = new Date(new Date(start).getTime() + days * 86400000 + 12 * 3600000);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(noon);
 }

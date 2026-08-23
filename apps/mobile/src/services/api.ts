@@ -9,8 +9,13 @@ import {
   secureSet,
 } from './secure-store';
 import type {
+  AccountRow,
+  AccountingBackfillResult,
+  AccountingOverview,
+  AccountingSuppliersOverview,
   AppRoleRow,
   AuditLogRow,
+  BalanceSheetReport,
   BankRow,
   BankSummary,
   BankTransactionRow,
@@ -29,17 +34,23 @@ import type {
   DepartmentPrinterSettings,
   FinanceEntry,
   FinanceLedgerRow,
+  FiscalYearRow,
+  FixedAssetRow,
+  GeneralLedgerReport,
   GlobalStockSnapshot,
   InventoryCountSheet,
   InventorySessionDetail,
   InventorySessionKind,
+  IncomeStatementReport,
   InventorySessionListItem,
+  JournalEntryRow,
   LoginResponse,
   MarginAnalysisReport,
   PackagingUnit,
   PaginatedResult,
   PermissionDefinition,
   Product,
+  ProductFamily,
   PurchaseOrderDetail,
   PurchaseOrderListItem,
   PurchaseOrdersAmountSummary,
@@ -51,6 +62,7 @@ import type {
   SaleCashGaps,
   SessionUser,
   StockMovementRow,
+  TrialBalanceReport,
 } from '../types/api';
 
 const api = axios.create({ baseURL: resolveApiBaseUrl() });
@@ -216,6 +228,7 @@ export async function createProduct(payload: {
   cardColor?: string;
   companyId?: number;
   departmentId?: number;
+  productFamilyId?: number | null;
   sku?: string;
   isService?: boolean;
   trackStock?: boolean;
@@ -239,6 +252,7 @@ export async function updateProduct(
     cardColor: string | null;
     companyId: number;
     departmentId: number | null;
+    productFamilyId: number | null;
     sku: string;
     isService: boolean;
     trackStock: boolean;
@@ -255,6 +269,39 @@ export async function updateProduct(
 
 export async function deleteProduct(id: number): Promise<void> {
   await api.delete(`/products/${id}`);
+}
+
+export async function getProductFamilies(companyId: number): Promise<ProductFamily[]> {
+  const { data } = await api.get<ProductFamily[]>('/product-families', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function createProductFamily(payload: {
+  companyId: number;
+  name: string;
+  tiers: { minQuantity: number; unitPrice: number }[];
+  productIds?: number[];
+}): Promise<ProductFamily> {
+  const { data } = await api.post<ProductFamily>('/product-families', payload);
+  return data;
+}
+
+export async function updateProductFamily(
+  id: number,
+  payload: {
+    name?: string;
+    tiers?: { minQuantity: number; unitPrice: number }[];
+    productIds?: number[];
+  },
+): Promise<ProductFamily> {
+  const { data } = await api.patch<ProductFamily>(`/product-families/${id}`, payload);
+  return data;
+}
+
+export async function deleteProductFamily(id: number): Promise<void> {
+  await api.delete(`/product-families/${id}`);
 }
 
 export async function getCompanies(): Promise<CompanyListItem[]> {
@@ -1096,11 +1143,30 @@ export async function getCreditCustomer(id: number): Promise<CreditCustomerDetai
   return data;
 }
 
+export async function createCreditSale(payload: {
+  creditCustomerId: number;
+  items: { productSaleUnitId: number; quantity: number }[];
+  downPayment?: number;
+  downPaymentMethod?: 'CASH' | 'CARD' | 'MOBILE_MONEY';
+  note?: string;
+}): Promise<{
+  saleId: number;
+  txnNumber?: number;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+  deliveryId: number;
+}> {
+  const { data } = await api.post('/credit/sales', payload);
+  return data;
+}
+
 export async function recordCreditPayment(payload: {
   creditCustomerId: number;
   amount: number;
   saleId?: number;
-  method?: 'CASH' | 'CARD' | 'MOBILE_MONEY';
+  method?: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'BANK';
+  bankAccountId?: number;
   reference?: string;
   note?: string;
 }): Promise<{
@@ -1110,5 +1176,186 @@ export async function recordCreditPayment(payload: {
   financeEntryId?: number;
 }> {
   const { data } = await api.post('/credit/payments', payload);
+  return data;
+}
+
+export async function getAccountingOverview(companyId: number): Promise<AccountingOverview> {
+  const { data } = await api.get<AccountingOverview>('/accounting/overview', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function getAccountingAccounts(companyId: number): Promise<AccountRow[]> {
+  const { data } = await api.get<AccountRow[]>('/accounting/accounts', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function getAccountingJournal(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  journalCode?: string;
+  skip?: number;
+  take?: number;
+}): Promise<{
+  items: JournalEntryRow[];
+  total: number;
+  fiscalYear: FiscalYearRow | null;
+}> {
+  const { data } = await api.get<{
+    items: JournalEntryRow[];
+    total: number;
+    fiscalYear: FiscalYearRow | null;
+  }>('/accounting/journal', { params });
+  return data;
+}
+
+export async function createManualJournalEntry(payload: {
+  companyId: number;
+  entryDate: string;
+  journalCode?: string;
+  description: string;
+  reference?: string;
+  lines: Array<{ accountCode: string; debit?: number; credit?: number; label?: string }>;
+}): Promise<JournalEntryRow> {
+  const { data } = await api.post<JournalEntryRow>('/accounting/journal', payload);
+  return data;
+}
+
+export async function getTrialBalance(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<TrialBalanceReport> {
+  const { data } = await api.get<TrialBalanceReport>('/accounting/trial-balance', { params });
+  return data;
+}
+
+export async function getBalanceSheet(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateTo?: string;
+}): Promise<BalanceSheetReport> {
+  const { data } = await api.get<BalanceSheetReport>('/accounting/balance-sheet', { params });
+  return data;
+}
+
+export async function getIncomeStatement(params: {
+  companyId: number;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<IncomeStatementReport> {
+  const { data } = await api.get<IncomeStatementReport>('/accounting/income-statement', {
+    params,
+  });
+  return data;
+}
+
+export async function getGeneralLedger(params: {
+  companyId: number;
+  accountId?: number;
+  accountCode?: string;
+  fiscalYearId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<GeneralLedgerReport> {
+  const { data } = await api.get<GeneralLedgerReport>('/accounting/general-ledger', { params });
+  return data;
+}
+
+export async function ensureAccountingChart(companyId: number): Promise<AccountRow[]> {
+  const { data } = await api.post<AccountRow[]>('/accounting/accounts/ensure', { companyId });
+  return data;
+}
+
+export async function createFiscalYear(payload: {
+  companyId: number;
+  label: string;
+  startDate: string;
+  endDate: string;
+}): Promise<FiscalYearRow> {
+  const { data } = await api.post<FiscalYearRow>('/accounting/fiscal-years', payload);
+  return data;
+}
+
+export async function closeFiscalYear(id: number): Promise<{
+  fiscalYear: FiscalYearRow;
+  resultat: number;
+}> {
+  const { data } = await api.post<{ fiscalYear: FiscalYearRow; resultat: number }>(
+    `/accounting/fiscal-years/${id}/close`,
+  );
+  return data;
+}
+
+export async function backfillAccounting(companyId: number): Promise<AccountingBackfillResult> {
+  const { data } = await api.post<AccountingBackfillResult>('/accounting/backfill', { companyId });
+  return data;
+}
+
+export async function getAccountingSuppliers(
+  companyId: number,
+): Promise<AccountingSuppliersOverview> {
+  const { data } = await api.get<AccountingSuppliersOverview>('/accounting/suppliers', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function createSupplierPayment(payload: {
+  companyId: number;
+  supplierName: string;
+  amount: number;
+  method?: 'CASH' | 'BANK';
+  bankAccountId?: number;
+  paidOn?: string;
+  note?: string;
+}): Promise<unknown> {
+  const { data } = await api.post('/accounting/suppliers/payments', payload);
+  return data;
+}
+
+export async function getFixedAssets(companyId: number): Promise<FixedAssetRow[]> {
+  const { data } = await api.get<FixedAssetRow[]>('/accounting/fixed-assets', {
+    params: { companyId },
+  });
+  return data;
+}
+
+export async function createFixedAsset(payload: {
+  companyId: number;
+  name: string;
+  acquisitionDate: string;
+  acquisitionCost: number;
+  residualValue?: number;
+  usefulLifeMonths: number;
+  paidFrom?: 'CASH' | 'BANK' | 'SUPPLIER';
+  bankAccountId?: number;
+  note?: string;
+}): Promise<FixedAssetRow> {
+  const { data } = await api.post<FixedAssetRow>('/accounting/fixed-assets', payload);
+  return data;
+}
+
+export async function runDepreciation(payload: {
+  companyId: number;
+  period: string;
+  fixedAssetId?: number;
+}): Promise<{
+  period: string;
+  results: Array<{
+    assetId: number;
+    name: string;
+    amount: number;
+    status: 'posted' | 'skipped' | 'fully_depreciated';
+  }>;
+}> {
+  const { data } = await api.post('/accounting/fixed-assets/depreciate', payload);
   return data;
 }

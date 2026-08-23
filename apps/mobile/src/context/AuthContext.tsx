@@ -48,8 +48,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await initAuthCache();
-      await initDb();
+      try {
+        await initAuthCache();
+      } catch {
+        // ignore cache hydrate errors
+      }
+      try {
+        await initDb();
+      } catch {
+        // SQLite indisponible : l’app continue (file offline limitée)
+      }
       if (!getToken()) {
         if (!cancelled) {
           setUser(null);

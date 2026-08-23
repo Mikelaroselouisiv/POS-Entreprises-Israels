@@ -26,6 +26,7 @@ import { isLikelyNetworkError } from '@/services/api-errors';
 import {
   collectSaleBalance,
   createSale,
+  listBanks,
   listSaleCashGaps,
   settleSaleChange,
 } from '@/services/api';
@@ -35,6 +36,7 @@ import { enqueueSale, syncSalesQueue } from '@/services/offline-queue';
 import { loadProductsWithCache } from '@/services/product-cache';
 import { buildSaleReceiptData } from '@/services/receipt';
 import type {
+  BankRow,
   CreateSalePayload,
   Product,
   RegisterSessionDetail,
@@ -44,10 +46,14 @@ import type {
 import { DEFAULT_PRODUCT_TILE_COLOR, textColorForBackground } from '@/utils/colorContrast';
 import { emitPendingSalesChanged } from '@/utils/eventBus';
 import { formatMoney } from '@/utils/datetime';
+import { paymentMethodLabel } from '@/utils/paymentLabels';
+import { saleDisplayRef } from '@/utils/saleRef';
 import {
   addLineToCart,
   bumpCartLine,
+  defaultSaleUnit,
   effectiveUnitPrice,
+  familyQtyByProduct,
   productSellable,
   setCartLineManualPrice,
   setCartLineQty,
@@ -59,17 +65,19 @@ const DANGER = BrandColors.danger;
 const WARNING = '#B45309';
 const WARNING_BG = '#FEF3C7';
 
-type PaymentMethod = 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT';
+type PaymentMethod = 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'SPLIT' | 'BANK';
 
 type SaleDraft = {
   id: string;
   cart: CartLine[];
   paymentMethod: PaymentMethod;
   name: string;
+  bankId: number | '';
+  bankAccountId: number | '';
 };
 
 function emptyDraft(id = `d${Date.now()}`): SaleDraft {
-  return { id, cart: [], paymentMethod: 'CASH', name: 'Client' };
+  return { id, cart: [], paymentMethod: 'CASH', name: 'Client', bankId: '', bankAccountId: '' };
 }
 
 const PAYMENT_OPTIONS: {
@@ -81,6 +89,7 @@ const PAYMENT_OPTIONS: {
   { method: 'CARD', label: 'Carte', icon: 'card-outline' },
   { method: 'MOBILE_MONEY', label: 'Mobile', icon: 'phone-portrait-outline' },
   { method: 'SPLIT', label: 'Mixte', icon: 'git-merge-outline' },
+  { method: 'BANK', label: 'Banque', icon: 'business-outline' },
 ];
 
 type PosWorkspaceProps = {
@@ -93,7 +102,7 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
   const cashierLabel = user?.fullName?.trim() || user?.phone || 'Caissier';
   const departmentId = typeof user?.departmentId === 'number' ? user.departmentId : undefined;
   const canUsePos = canPerm('pos.use') || can(['ADMIN', 'MANAGER', 'CASHIER']);
-  const canSpecial = can(['ADMIN', 'MANAGER']);
+  const canSpecial = canPerm('sales.special_price') || can(['ADMIN', 'MANAGER']);
   const canSell = canPerm('sales.create') || canUsePos;
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -110,14 +119,22 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
   const [cashGaps, setCashGaps] = useState<SaleCashGaps>({ changeOwed: [], balanceOwed: [] });
   const [cashGapBusyId, setCashGapBusyId] = useState<number | null>(null);
   const [cashGapQuery, setCashGapQuery] = useState('');
+  const [banks, setBanks] = useState<BankRow[]>([]);
 
   const activeDraft = useMemo(
     () => drafts.find((d) => d.id === activeDraftId) ?? drafts[0],
     [drafts, activeDraftId],
   );
-  const cart = activeDraft?.cart ?? [];
+  const cart = useMemo(() => activeDraft?.cart ?? [], [activeDraft?.cart]);
   const paymentMethod = activeDraft?.paymentMethod ?? 'CASH';
   const clientName = activeDraft?.name ?? 'Client';
+  const selectedBankId = activeDraft?.bankId ?? '';
+  const selectedBankAccountId = activeDraft?.bankAccountId ?? '';
+  const selectedBank = banks.find((b) => b.id === selectedBankId);
+  const bankAccounts = (selectedBank?.accounts ?? []).filter((a) => a.isActive);
+  const bankReady =
+    paymentMethod !== 'BANK' ||
+    (typeof selectedBankId === 'number' && typeof selectedBankAccountId === 'number');
 
   const pendingCount = usePendingSalesCount();
   const showTenderField = paymentMethod === 'CASH' || paymentMethod === 'SPLIT';
@@ -150,6 +167,16 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
+
+  useEffect(() => {
+    if (companyId == null) {
+      setBanks([]);
+      return;
+    }
+    void listBanks({ companyId })
+      .then((rows) => setBanks(rows.filter((b) => b.isActive)))
+      .catch(() => setBanks([]));
+  }, [companyId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -240,13 +267,24 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
     setNameDraft(n === 'Client' ? '' : n);
   }, [activeDraftId, activeDraft?.name]);
 
+  const productsById = useMemo(() => {
+    const byId = new Map<number, Product>();
+    for (const product of products) byId.set(product.id, product);
+    return byId;
+  }, [products]);
+
+  const familyQtyMap = useMemo(
+    () => familyQtyByProduct(cart, productsById),
+    [cart, productsById],
+  );
+
   const cartTotal = useMemo(
     () =>
       cart.reduce((sum, line) => {
-        const product = products.find((p) => p.id === line.productId);
-        return sum + effectiveUnitPrice(product, line) * line.quantity;
+        const product = productsById.get(line.productId);
+        return sum + effectiveUnitPrice(product, line, familyQtyMap) * line.quantity;
       }, 0),
-    [cart, products],
+    [cart, productsById, familyQtyMap],
   );
 
   const cartItemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
@@ -329,11 +367,11 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
     setQtyDrafts({});
   }
 
-  async function onSettleChange(saleId: number) {
-    setCashGapBusyId(saleId);
+  async function onSettleChange(row: SaleCashGapRow) {
+    setCashGapBusyId(row.id);
     try {
-      const r = await settleSaleChange(saleId);
-      setStatus(`Monnaie remise — fiche #${saleId} (${formatMoney(r.changeSettled)})`);
+      const r = await settleSaleChange(row.id);
+      setStatus(`Monnaie remise — fiche #${saleDisplayRef(row)} (${formatMoney(r.changeSettled)})`);
       await refreshCashGaps();
     } catch {
       setStatus('Impossible de remettre la monnaie');
@@ -342,11 +380,11 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
     }
   }
 
-  async function onCollectBalance(saleId: number, balanceDue: number) {
-    setCashGapBusyId(saleId);
+  async function onCollectBalance(row: SaleCashGapRow) {
+    setCashGapBusyId(row.id);
     try {
-      await collectSaleBalance(saleId, balanceDue);
-      setStatus(`Reste encaissé — fiche #${saleId} (${formatMoney(balanceDue)})`);
+      await collectSaleBalance(row.id, row.balanceDue);
+      setStatus(`Reste encaissé — fiche #${saleDisplayRef(row)} (${formatMoney(row.balanceDue)})`);
       await refreshCashGaps();
     } catch {
       setStatus('Impossible d’encaisser le reste');
@@ -386,6 +424,13 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
       }
     }
 
+    if (paymentMethod === 'BANK') {
+      if (selectedBankId === '' || selectedBankAccountId === '') {
+        setStatus('Choisissez la banque et le compte');
+        return;
+      }
+    }
+
     const total = cartTotal;
     const applied = tendered != null ? Math.min(tendered, total) : total;
     if (applied < 0.01 && total > 0.009) {
@@ -396,6 +441,10 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
     const cartSnapshot = cart;
     const nameSnapshot = draftName === 'Client' ? null : draftName;
     const methodSnapshot = paymentMethod;
+    const bankAccountSnapshot =
+      methodSnapshot === 'BANK' && typeof selectedBankAccountId === 'number'
+        ? selectedBankAccountId
+        : undefined;
 
     setSubmitting(true);
     const payload: CreateSalePayload = {
@@ -410,6 +459,7 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
         {
           method: methodSnapshot,
           amount: applied > 0.009 ? applied : total > 0.009 ? applied : 0.01,
+          ...(bankAccountSnapshot != null ? { bankAccountId: bankAccountSnapshot } : {}),
         },
       ],
       clientName: nameSnapshot,
@@ -422,6 +472,10 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
     try {
       const online = await isOnline();
       if (!online) {
+        if (methodSnapshot === 'BANK') {
+          setStatus('Paiement banque indisponible hors ligne');
+          return;
+        }
         await enqueueSale(payload);
         emitPendingSalesChanged();
         setStatus('Hors ligne : vente mise en file d’attente');
@@ -430,12 +484,13 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
       }
 
       const sale = await createSale(payload);
+      const txnRef = saleDisplayRef(sale);
       const changeDue = Number(sale.changeDue ?? tenderPreview?.changeDue ?? 0);
       const balanceDue = Number(
         sale.balanceDue ??
           (tenderPreview ? Math.max(0, cartTotal - (tendered ?? cartTotal)) : 0),
       );
-      const parts = [`Vente #${sale.id} enregistrée`];
+      const parts = [`Vente #${txnRef} enregistrée`];
       if (changeDue > 0.009) parts.push(`monnaie ${formatMoney(changeDue)}`);
       if (balanceDue > 0.009) parts.push(`reste ${formatMoney(balanceDue)}`);
       setStatus(parts.join(' — '));
@@ -444,18 +499,24 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
         try {
           const receiptData = await buildSaleReceiptData({
             items: cartSnapshot.map((l) => {
-              const product = products.find((p) => p.id === l.productId);
-              return { name: l.label, qty: l.quantity, price: effectiveUnitPrice(product, l) };
+              const product = productsById.get(l.productId);
+              return {
+                name: l.label,
+                qty: l.quantity,
+                price: effectiveUnitPrice(product, l, familyQtyMap),
+              };
             }),
             total,
-            paymentMode: methodSnapshot,
+            saleRef: txnRef,
+            paymentMode: paymentMethodLabel(methodSnapshot),
             clientName: nameSnapshot ?? undefined,
             cashier: cashierLabel,
             departmentId,
           });
           await printReceipt(receiptData);
-        } catch {
-          setStatus(`${parts[0]} (échec impression)`);
+        } catch (printError) {
+          const reason = printError instanceof Error ? printError.message : 'échec impression';
+          setStatus(`${parts[0]} (${reason})`);
         }
       }
 
@@ -464,11 +525,13 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
       loadProducts();
     } catch (e) {
       const online = await isOnline();
-      if (isLikelyNetworkError(e) || !online) {
+      if ((isLikelyNetworkError(e) || !online) && methodSnapshot !== 'BANK') {
         await enqueueSale(payload);
         emitPendingSalesChanged();
         setStatus('Réseau indisponible : vente mise en file d’attente');
         removeActiveDraftFromUI();
+      } else if (methodSnapshot === 'BANK' && (isLikelyNetworkError(e) || !online)) {
+        setStatus('Paiement banque indisponible hors ligne');
       } else {
         setStatus('Échec vente (stock, caisse ou données)');
       }
@@ -483,7 +546,7 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
       <View key={`${kind}-${row.id}`} style={styles.gapRow}>
         <View style={styles.gapInfo}>
           <Text style={styles.gapTitle}>
-            #{row.id} · {row.clientName?.trim() || 'Client'}
+            #{saleDisplayRef(row)} · {row.clientName?.trim() || 'Client'}
           </Text>
           <MoneyText
             value={kind === 'change' ? row.changeDue : row.balanceDue}
@@ -498,9 +561,7 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
           ]}
           disabled={!salesEnabled || busy}
           onPress={() =>
-            kind === 'change'
-              ? void onSettleChange(row.id)
-              : void onCollectBalance(row.id, row.balanceDue)
+            kind === 'change' ? void onSettleChange(row) : void onCollectBalance(row)
           }>
           {busy ? (
             <ActivityIndicator
@@ -534,7 +595,7 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
         <View style={styles.blocked}>
           <Text style={styles.blockedTitle}>Vente spéciale</Text>
           <Text style={styles.blockedText}>
-            Réservée aux administrateurs et gestionnaires.
+            Réservée aux comptes avec l’autorisation « prix spécial ».
           </Text>
         </View>
       </Screen>
@@ -644,7 +705,7 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
                 {item.name}
               </Text>
               <MoneyText
-                value={item.saleUnits?.[0]?.salePrice ?? 0}
+                value={defaultSaleUnit(item)?.salePrice ?? 0}
                 style={[styles.productPrice, { color: fg }]}
               />
             </Pressable>
@@ -755,8 +816,8 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
               </View>
             }
             renderItem={({ item }) => {
-              const product = products.find((p) => p.id === item.productId);
-              const price = effectiveUnitPrice(product, item);
+              const product = productsById.get(item.productId);
+              const price = effectiveUnitPrice(product, item, familyQtyMap);
               return (
                 <View style={styles.cartRow}>
                   <View style={styles.cartRowInfo}>
@@ -847,7 +908,13 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
                 return (
                   <Pressable
                     key={method}
-                    onPress={() => updateActiveDraft((d) => ({ ...d, paymentMethod: method }))}
+                    onPress={() =>
+                      updateActiveDraft((d) => ({
+                        ...d,
+                        paymentMethod: method,
+                        ...(method !== 'BANK' ? { bankId: '' as const, bankAccountId: '' as const } : {}),
+                      }))
+                    }
                     style={[styles.paymentButton, active && styles.paymentButtonActive]}>
                     <Ionicons name={icon} size={16} color={active ? '#ffffff' : '#60646C'} />
                     <Text style={[styles.paymentLabel, active && styles.paymentLabelActive]}>
@@ -857,6 +924,58 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
                 );
               })}
             </View>
+
+            {paymentMethod === 'BANK' ? (
+              <View style={styles.bankBlock}>
+                <Text style={styles.bankLabel}>Banque</Text>
+                <View style={styles.paymentRow}>
+                  {banks.length === 0 ? (
+                    <Text style={styles.tenderWarn}>Aucune banque configurée</Text>
+                  ) : (
+                    banks.map((bank) => {
+                      const active = selectedBankId === bank.id;
+                      return (
+                        <Pressable
+                          key={bank.id}
+                          onPress={() =>
+                            updateActiveDraft((d) => ({ ...d, bankId: bank.id, bankAccountId: '' }))
+                          }
+                          style={[styles.bankChip, active && styles.bankChipActive]}>
+                          <Text style={[styles.bankChipText, active && styles.bankChipTextActive]}>
+                            {bank.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </View>
+                <Text style={styles.bankLabel}>Compte</Text>
+                <View style={styles.paymentRow}>
+                  {selectedBankId === '' ? (
+                    <Text style={styles.tenderWarn}>Choisissez une banque</Text>
+                  ) : bankAccounts.length === 0 ? (
+                    <Text style={styles.tenderWarn}>Aucun compte actif</Text>
+                  ) : (
+                    bankAccounts.map((account) => {
+                      const active = selectedBankAccountId === account.id;
+                      return (
+                        <Pressable
+                          key={account.id}
+                          onPress={() =>
+                            updateActiveDraft((d) => ({ ...d, bankAccountId: account.id }))
+                          }
+                          style={[styles.bankChip, active && styles.bankChipActive]}>
+                          <Text style={[styles.bankChipText, active && styles.bankChipTextActive]}>
+                            {account.name}
+                            {account.accountNumber ? ` (${account.accountNumber})` : ''}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </View>
+              </View>
+            ) : null}
 
             {showTenderField ? (
               <View style={styles.inputWrapper}>
@@ -907,10 +1026,11 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
               <Pressable
                 style={[
                   styles.checkoutButton,
-                  (submitting || cart.length === 0 || !salesEnabled) && styles.buttonDisabled,
+                  (submitting || cart.length === 0 || !salesEnabled || !bankReady) &&
+                    styles.buttonDisabled,
                 ]}
                 onPress={() => void checkout()}
-                disabled={submitting || cart.length === 0 || !salesEnabled}>
+                disabled={submitting || cart.length === 0 || !salesEnabled || !bankReady}>
                 <Ionicons name="checkmark-circle-outline" size={20} color="#ffffff" />
                 <Text style={styles.checkoutButtonText}>
                   {submitting ? 'Encaissement…' : 'Encaisser'}
@@ -1107,6 +1227,19 @@ const styles = StyleSheet.create({
   },
   paymentLabel: { fontSize: 12, color: BrandColors.text },
   paymentLabelActive: { color: '#ffffff', fontWeight: '600' },
+  bankBlock: { gap: Spacing.two },
+  bankLabel: { fontSize: 12, fontWeight: '700', color: BrandColors.textMuted },
+  bankChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: BrandColors.borderStrong,
+    backgroundColor: BrandColors.surface,
+  },
+  bankChipActive: { backgroundColor: BrandColors.primary, borderColor: BrandColors.primary },
+  bankChipText: { color: BrandColors.text, fontWeight: '600', fontSize: 12 },
+  bankChipTextActive: { color: '#fff' },
   tenderMeta: { gap: 4 },
   tenderOk: { color: BrandColors.ok, fontWeight: '600' },
   tenderWarn: { color: BrandColors.primaryHover, fontWeight: '600' },

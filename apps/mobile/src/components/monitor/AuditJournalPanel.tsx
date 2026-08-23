@@ -235,7 +235,11 @@ function FilterChips({
   onChange: (value: string | number) => void;
 }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ flexGrow: 0 }}
+      contentContainerStyle={styles.chips}>
       {items.map((item) => {
         const active = item.id === value;
         return (

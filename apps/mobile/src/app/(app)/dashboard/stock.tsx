@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useState, type ComponentProps } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ChipScroll } from '@/components/ChipScroll';
 import { GlobalStockPanel } from '@/components/monitor/GlobalStockPanel';
 import { InventoryPhysicalPanel } from '@/components/monitor/InventoryPhysicalPanel';
 import { StockMovementsPanel } from '@/components/monitor/StockMovementsPanel';
@@ -22,7 +23,9 @@ import { formatQuantity } from '@/utils/quantity';
 type StockView = 'alerts' | 'count' | 'global' | 'movements';
 
 export default function StockMonitorScreen() {
-  const { can } = useAuth();
+  const { can, canPerm } = useAuth();
+  const canSeeGlobalStock =
+    can(['ADMIN']) || canPerm('stock.global') || canPerm('reports.view');
   const { companyId, companies, setCompanyId, ready, lockedToSession } = useCompanyScope();
   const [view, setView] = useState<StockView>('alerts');
   const [low, setLow] = useState<Product[]>([]);
@@ -35,7 +38,7 @@ export default function StockMonitorScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (kind?: 'low' | 'zero', offset = 0) => {
-    if (!can(['ADMIN']) || companyId == null) return;
+    if (!canSeeGlobalStock || companyId == null) return;
     try {
       setError(null);
       if (kind === 'low') {
@@ -78,7 +81,7 @@ export default function StockMonitorScreen() {
     } finally {
       setLoadingMore(null);
     }
-  }, [can, companyId]);
+  }, [canSeeGlobalStock, companyId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -99,11 +102,13 @@ export default function StockMonitorScreen() {
     setRefreshKey((value) => value + 1);
   }
 
-  if (!can(['ADMIN'])) {
+  if (!canSeeGlobalStock) {
     return (
       <Screen>
         <View style={styles.blocked}>
-          <Text style={styles.blockedText}>Stock & mouvements réservés aux administrateurs.</Text>
+          <Text style={styles.blockedText}>
+            Stock global réservé aux comptes avec stock.global ou reports.view.
+          </Text>
         </View>
       </Screen>
     );
@@ -113,10 +118,7 @@ export default function StockMonitorScreen() {
     <Screen>
       <RefreshableScroll refreshing={refreshing} onRefresh={onRefresh}>
         {!lockedToSession && companies.length > 1 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.companyRow}>
+          <ChipScroll>
             {companies.map((company) => (
               <Pressable
                 key={company.id}
@@ -132,13 +134,10 @@ export default function StockMonitorScreen() {
                 </Text>
               </Pressable>
             ))}
-          </ScrollView>
+          </ChipScroll>
         ) : null}
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.viewSwitch}>
+        <ChipScroll contentStyle={styles.viewSwitch}>
           <ViewButton
             label="Alertes"
             icon="warning-outline"
@@ -163,7 +162,7 @@ export default function StockMonitorScreen() {
             active={view === 'movements'}
             onPress={() => setView('movements')}
           />
-        </ScrollView>
+        </ChipScroll>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {ready && companyId == null ? (
@@ -336,7 +335,6 @@ function LoadMoreButton({
 const styles = StyleSheet.create({
   blocked: { flex: 1, justifyContent: 'center', padding: Spacing.five },
   blockedText: { textAlign: 'center', color: BrandColors.textMuted },
-  companyRow: { gap: Spacing.two, paddingBottom: Spacing.two },
   companyChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -345,6 +343,9 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.borderStrong,
     backgroundColor: BrandColors.surface,
     maxWidth: 200,
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   companyChipActive: { backgroundColor: BrandColors.primary, borderColor: BrandColors.primary },
   companyChipText: { color: BrandColors.text, fontSize: 13, fontWeight: '600' },

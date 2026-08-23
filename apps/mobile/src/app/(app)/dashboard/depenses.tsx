@@ -51,7 +51,9 @@ export default function DepensesScreen() {
   const { can, canPerm } = useAuth();
   const { companyId, ready } = useCompanyScope();
   const isAdmin = can(['ADMIN']);
-  const canWriteFinance = isAdmin || can(['MANAGER']) || canPerm('finance.write');
+  const canViewFinance = isAdmin || canPerm('finance.view') || canPerm('finance.write');
+  const canWriteFinance =
+    isAdmin || canPerm('finance.write') || canPerm('finance.expense');
   const [period, setPeriod] = useState<PeriodKey>('month');
   const [snapshot, setSnapshot] = useState<DashboardBalanceSnapshot | null>(null);
   const [ledger, setLedger] = useState<FinanceLedgerRow[]>([]);
@@ -175,7 +177,7 @@ export default function DepensesScreen() {
     <Screen keyboard>
       <RefreshableScroll refreshing={refreshing} onRefresh={onRefresh}>
         <PeriodChips value={period} onChange={setPeriod} />
-        {snapshot ? (
+        {canViewFinance && snapshot ? (
           <View style={styles.kpiGrid}>
             {isAdmin ? (
               <KpiCard label="Achats" value={snapshot.purchases} money />
@@ -187,6 +189,11 @@ export default function DepensesScreen() {
         {canWriteFinance ? (
           <View style={styles.formCard}>
             <Text style={styles.section}>Nouvelle dépense manuelle</Text>
+            {!canViewFinance ? (
+              <Text style={styles.fieldLabel}>
+                Saisie seule — le journal financier n’est pas visible pour ce compte.
+              </Text>
+            ) : null}
             <Text style={styles.fieldLabel}>Libellé *</Text>
             <ScrollView
               horizontal
