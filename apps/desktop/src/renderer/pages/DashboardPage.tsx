@@ -38,6 +38,7 @@ import type {
   StockMovementRow,
 } from '../types/api';
 import { formatQuantity } from '../utils/formatQuantity';
+import { isSaleVoided, saleStatusAuditLabel } from '../utils/saleAudit';
 import { saleTxnNumber } from '../utils/saleTxnNumber';
 import { useAutoClearMessage } from '../hooks/useAutoClearMessage';
 import { useAuth } from '../context/AuthContext';
@@ -646,7 +647,7 @@ export function DashboardPage() {
           ? 'La vente, les paiements et l’écriture de caisse seront effacés. Si la vente était complétée, le stock sera rétabli.'
           : 'Cette dépense manuelle sera retirée du journal et des totaux.';
     const ok = window.confirm(
-      `Supprimer définitivement cette ligne (${kindLabel}) ?\n\n${row.description}\n\n${detail}`,
+      `Retirer cette ligne (${kindLabel}) des totaux ?\n\n${row.description}\n\n${detail}\n\nLa ligne reste visible (barrée) pour l’audit.`,
     );
     if (!ok) return;
     setLedgerDeletingId(row.id);
@@ -805,23 +806,22 @@ export function DashboardPage() {
   async function confirmDeleteSale(sale: Sale) {
     if (companyId === '') return;
     const ok = window.confirm(
-      `Supprimer définitivement la vente n°${saleTxnNumber(sale)} ?\n\n` +
-        `Cette action est irréversible : la vente, les lignes, les paiements et l’écriture de caisse seront effacés de la base. ` +
-        `Si la vente était encore « complétée », le stock livré sera rétabli.`,
+      `Retirer la vente n°${saleTxnNumber(sale)} des totaux et du stock ?\n\n` +
+        `La caisse, les paiements et le stock sont annulés comme avant. ` +
+        `La ligne reste visible (barrée) pour l’audit.`,
     );
     if (!ok) return;
     setSaleDeletingId(sale.id);
     setMsg('');
     try {
       await deleteSalePermanently(sale.id, Number(companyId));
-      setSales((prev) => prev.filter((x) => x.id !== sale.id));
-      setSalesTotal((t) => Math.max(0, t - 1));
-      setSaleModal((m) => (m?.id === sale.id ? null : m));
-      if (saleModal?.id === sale.id) {
-        setSaleReceiptCompany(null);
-        setSaleReceiptPrinter(null);
-      }
-      setMsg('Vente supprimée définitivement.');
+      setSales((prev) =>
+        prev.map((x) => (x.id === sale.id ? { ...x, deletedAt: new Date().toISOString() } : x)),
+      );
+      setSaleModal((m) =>
+        m?.id === sale.id ? { ...m, deletedAt: new Date().toISOString() } : m,
+      );
+      setMsg('Vente retirée des totaux — la ligne reste pour l’audit.');
     } catch {
       setMsg('Impossible de supprimer cette vente.', { persist: true });
     } finally {
@@ -829,27 +829,23 @@ export function DashboardPage() {
     }
   }
 
-  function removeSaleFromList(saleId: number) {
-    setSales((prev) => prev.filter((x) => x.id !== saleId));
-    setSalesTotal((t) => Math.max(0, t - 1));
-    setSaleModal((m) => (m?.id === saleId ? null : m));
-    if (saleModal?.id === saleId) {
-      setSaleReceiptCompany(null);
-      setSaleReceiptPrinter(null);
-    }
+  function markSaleInList(saleId: number, patch: Partial<Sale>) {
+    setSales((prev) => prev.map((x) => (x.id === saleId ? { ...x, ...patch } : x)));
+    setSaleModal((m) => (m?.id === saleId ? { ...m, ...patch } : m));
   }
 
   async function confirmCancelSale(sale: Sale) {
     const ok = window.confirm(
       `Annuler la vente n°${saleTxnNumber(sale)} ?\n\n` +
-        `L’écriture de caisse sera retirée. Le stock déjà livré sera réintégré.`,
+        `L’écriture de caisse sera retirée. Le stock déjà livré sera réintégré. ` +
+        `La ligne reste visible (barrée) pour l’audit.`,
     );
     if (!ok) return;
     setSaleActionBusy(true);
     setMsg('');
     try {
       await cancelSale(sale.id);
-      removeSaleFromList(sale.id);
+      markSaleInList(sale.id, { status: 'CANCELLED' });
       setMsg(`Vente n°${saleTxnNumber(sale)} annulée.`);
     } catch {
       setMsg('Impossible d’annuler cette vente.', { persist: true });
@@ -861,14 +857,15 @@ export function DashboardPage() {
   async function confirmRefundSale(sale: Sale) {
     const ok = window.confirm(
       `Rembourser la vente n°${saleTxnNumber(sale)} (${formatMoney(sale.total)}) ?\n\n` +
-        `L’écriture de caisse sera retirée. Le stock déjà livré sera réintégré.`,
+        `L’écriture de caisse sera retirée. Le stock déjà livré sera réintégré. ` +
+        `La ligne reste visible (barrée) pour l’audit.`,
     );
     if (!ok) return;
     setSaleActionBusy(true);
     setMsg('');
     try {
       await refundSale(sale.id);
-      removeSaleFromList(sale.id);
+      markSaleInList(sale.id, { status: 'REFUNDED' });
       setMsg(`Vente n°${saleTxnNumber(sale)} remboursée.`);
     } catch {
       setMsg('Impossible de rembourser cette vente.', { persist: true });
@@ -1268,7 +1265,11 @@ export function DashboardPage() {
                         sales.map((s) => (
                           <tr
                             key={s.id}
-                            className="dashboard-sale-row"
+                            className={
+                              isSaleVoided(s)
+                                ? 'dashboard-sale-row dashboard-sale-row--voided'
+                                : 'dashboard-sale-row'
+                            }
                             onClick={() => void openSaleDetail(s.id)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
@@ -1287,24 +1288,14 @@ export function DashboardPage() {
                             <td>
                               <small>{s.user?.fullName?.trim() || s.cashier || s.user?.phone || '—'}</small>
                             </td>
-                            <td>
-                              {s.status === 'COMPLETED'
-                                ? s.creditCustomerId != null
-                                  ? 'Crédit'
-                                  : 'Complétée'
-                                : s.status === 'CANCELLED'
-                                  ? 'Annulée'
-                                  : s.status === 'REFUNDED'
-                                    ? 'Remboursée'
-                                    : s.status}
-                            </td>
+                            <td>{saleStatusAuditLabel(s)}</td>
                             {canCancelOrRefund || canDeleteSale ? (
                               <td
                                 onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => e.stopPropagation()}
                               >
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                                  {canCancelOrRefund && s.status === 'COMPLETED' ? (
+                                  {canCancelOrRefund && s.status === 'COMPLETED' && !s.deletedAt ? (
                                     <button
                                       type="button"
                                       className="btn btn-secondary btn-sm"
@@ -1318,12 +1309,12 @@ export function DashboardPage() {
                                       Rembourser
                                     </button>
                                   ) : null}
-                                  {canDeleteSale ? (
+                                  {canDeleteSale && !isSaleVoided(s) ? (
                                     <button
                                       type="button"
                                       className="btn btn-danger btn-sm"
                                       disabled={saleDeletingId === s.id}
-                                      aria-label={`Supprimer définitivement la vente n°${saleTxnNumber(s)}`}
+                                      aria-label={`Supprimer la vente n°${saleTxnNumber(s)}`}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         void confirmDeleteSale(s);
@@ -1612,7 +1603,14 @@ export function DashboardPage() {
                     </li>
                   ) : (
                     ledgerItems.map((row) => (
-                      <li key={row.id} className="journal-row journal-row--actions">
+                      <li
+                        key={row.id}
+                        className={
+                          row.voided
+                            ? 'journal-row journal-row--actions journal-row--voided'
+                            : 'journal-row journal-row--actions'
+                        }
+                      >
                         <span className={`journal-type ${row.kind.toLowerCase()}`}>
                           {row.kind === 'PURCHASE'
                             ? 'Achat'
@@ -1630,10 +1628,11 @@ export function DashboardPage() {
                           <span className="dept-hint" style={{ display: 'block', marginTop: '0.2rem' }}>
                             {formatDateTime(row.occurredAt)} ·{' '}
                             {row.user?.fullName?.trim() || row.user?.phone || '—'}
+                            {row.voided ? ' · annulée' : ''}
                           </span>
                         </span>
                         <span className="journal-amt">{formatMoney(row.amount)}</span>
-                        {isAdmin ? (
+                        {isAdmin && !row.voided ? (
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm journal-delete-btn"

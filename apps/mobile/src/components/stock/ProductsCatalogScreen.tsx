@@ -27,6 +27,7 @@ import {
   getProducts,
   updateProduct,
 } from '@/services/api';
+import { writeCatalogCaches } from '@/services/product-cache';
 import type {
   CompanyListItem,
   Department,
@@ -99,6 +100,7 @@ export function ProductsCatalogScreen() {
       const [co, prods] = await Promise.all([getCompanies(), getProducts()]);
       setCompanies(co);
       setProducts(prods);
+      void writeCatalogCaches(prods);
       const preferred = sessionCompanyId ?? co[0]?.id;
       if (preferred != null) {
         setCreateCompanyId((prev) => (prev !== '' ? prev : preferred));

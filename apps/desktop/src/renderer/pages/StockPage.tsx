@@ -29,6 +29,7 @@ import { ProductFamiliesSection } from '../components/ProductFamiliesSection';
 import { PurchasingSection } from '../components/PurchasingSection';
 import { formatMoney } from '../utils/currency';
 import { formatQuantity } from '../utils/formatQuantity';
+import { writeCatalogCaches } from '../services/product-cache';
 import { formatYmd } from '../utils/datetime';
 import {
   stockPackagingLabel,
@@ -194,6 +195,7 @@ export function StockPage() {
     const [p, co] = await Promise.all([getProducts(), getCompanies()]);
     setProducts(p);
     setCompanies(co);
+    void writeCatalogCaches(p);
     if (co.length && companyId === '') setCompanyId(co[0].id);
     if (catalogAsOfApplied.trim()) {
       const hist = await getProducts(undefined, { asOf: catalogAsOfApplied.trim() });

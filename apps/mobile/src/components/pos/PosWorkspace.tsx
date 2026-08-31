@@ -156,7 +156,6 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
         await listSaleCashGaps({
           companyId,
           departmentId,
-          take: 40,
         }),
       );
     } catch {
@@ -166,6 +165,13 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
 
   useEffect(() => {
     loadProducts();
+  }, [loadProducts]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadProducts();
+    }, 45_000);
+    return () => clearInterval(id);
   }, [loadProducts]);
 
   useEffect(() => {
@@ -185,8 +191,9 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
           if (result.synced > 0) emitPendingSalesChanged();
         })
         .catch(() => undefined);
+      loadProducts();
       void refreshCashGaps();
-    }, [refreshCashGaps]),
+    }, [refreshCashGaps, loadProducts]),
   );
 
   useEffect(() => {
@@ -801,7 +808,10 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
                 ) : filteredCashGaps.changeOwed.length === 0 ? (
                   <Text style={styles.gapsEmpty}>Aucun résultat</Text>
                 ) : (
-                  filteredCashGaps.changeOwed.map((row) => renderCashGapRow(row, 'change'))
+                  (cashGapQuery.trim()
+                    ? filteredCashGaps.changeOwed
+                    : filteredCashGaps.changeOwed.slice(0, 40)
+                  ).map((row) => renderCashGapRow(row, 'change'))
                 )}
                 <Text style={[styles.gapsTitle, { marginTop: Spacing.three }]}>
                   Restes à encaisser
@@ -811,7 +821,10 @@ export function PosWorkspace({ mode }: PosWorkspaceProps) {
                 ) : filteredCashGaps.balanceOwed.length === 0 ? (
                   <Text style={styles.gapsEmpty}>Aucun résultat</Text>
                 ) : (
-                  filteredCashGaps.balanceOwed.map((row) => renderCashGapRow(row, 'balance'))
+                  (cashGapQuery.trim()
+                    ? filteredCashGaps.balanceOwed
+                    : filteredCashGaps.balanceOwed.slice(0, 40)
+                  ).map((row) => renderCashGapRow(row, 'balance'))
                 )}
               </View>
             }

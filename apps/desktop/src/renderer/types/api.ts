@@ -433,6 +433,8 @@ export interface Sale {
   subtotal?: number | string;
   tax?: number | string;
   status: 'COMPLETED' | 'CANCELLED' | 'REFUNDED';
+  /** Soft-delete : la vente reste listée pour audit. */
+  deletedAt?: string | null;
   createdAt: string;
   clientName?: string | null;
   cashier?: string | null;
@@ -456,6 +458,7 @@ export interface Sale {
     quantity: string | number;
     unitPrice: string | number;
     subtotal: string | number;
+    deletedAt?: string | null;
     product?: {
       id: number;
       name: string;
@@ -641,6 +644,8 @@ export interface FinanceLedgerRow {
   description: string;
   detail?: string | null;
   user: { id: number; fullName: string | null; phone: string } | null;
+  /** Soft-delete : visible barrée, exclue des totaux. */
+  voided?: boolean;
 }
 
 export type CreditCustomerStatus = 'CLEAR' | 'PARTIAL' | 'OVERDUE' | 'AT_LIMIT' | 'BLOCKED';

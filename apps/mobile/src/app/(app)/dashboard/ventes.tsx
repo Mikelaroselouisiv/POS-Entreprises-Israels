@@ -353,14 +353,19 @@ export default function VentesScreen() {
               <Text style={styles.empty}>Aucune transaction sur cette période.</Text>
             ) : (
               sales.map((sale) => {
+                const voided =
+                  Boolean(sale.deletedAt) ||
+                  sale.status === 'CANCELLED' ||
+                  sale.status === 'REFUNDED';
                 const statusTone =
-                  sale.status === 'COMPLETED'
-                    ? styles.statusCompleted
+                  sale.deletedAt || sale.status === 'CANCELLED'
+                    ? styles.statusCancelled
                     : sale.status === 'REFUNDED'
                       ? styles.statusRefunded
-                      : styles.statusCancelled;
-                const statusLabel =
-                  sale.status === 'COMPLETED'
+                      : styles.statusCompleted;
+                const statusLabel = sale.deletedAt
+                  ? 'Supprimée'
+                  : sale.status === 'COMPLETED'
                     ? 'Complétée'
                     : sale.status === 'REFUNDED'
                       ? 'Remboursée'
@@ -368,18 +373,29 @@ export default function VentesScreen() {
                 return (
                   <Pressable
                     key={sale.id}
-                    style={({ pressed }) => [styles.saleCard, pressed && styles.cardPressed]}
+                    style={({ pressed }) => [
+                      styles.saleCard,
+                      voided && styles.saleCardVoided,
+                      pressed && styles.cardPressed,
+                    ]}
                     onPress={() => void openSale(sale.id)}>
                     <View style={styles.saleTop}>
                       <View style={styles.saleRefWrap}>
-                        <Text style={styles.saleRef}>#{saleDisplayRef(sale)}</Text>
+                        <Text style={[styles.saleRef, voided && styles.voidedText]}>
+                          #{saleDisplayRef(sale)}
+                        </Text>
                         <View style={[styles.statusBadge, statusTone]}>
                           <Text style={styles.statusText}>{statusLabel}</Text>
                         </View>
                       </View>
-                      <MoneyText value={sale.total} style={styles.saleTotal} />
+                      <MoneyText
+                        value={sale.total}
+                        style={[styles.saleTotal, voided && styles.voidedText]}
+                      />
                     </View>
-                    <Text style={styles.saleClient} numberOfLines={1}>
+                    <Text
+                      style={[styles.saleClient, voided && styles.voidedText]}
+                      numberOfLines={1}>
                       {sale.clientName?.trim() || 'Client inconnu'}
                     </Text>
                     <View style={styles.saleBottom}>
@@ -511,6 +527,8 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     gap: 7,
   },
+  saleCardVoided: { borderColor: '#fecaca', backgroundColor: '#fef2f2' },
+  voidedText: { color: '#b91c1c', textDecorationLine: 'line-through' },
   cardPressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
   saleTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   saleRefWrap: { flexDirection: 'row', alignItems: 'center', gap: 7 },

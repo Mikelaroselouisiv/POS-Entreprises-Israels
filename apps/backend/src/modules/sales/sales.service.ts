@@ -113,7 +113,10 @@ export class SalesService {
               },
             },
             packagingUnit: true,
-            volumePrices: { orderBy: { minQuantity: 'asc' } },
+            volumePrices: {
+              where: { deletedAt: null },
+              orderBy: { minQuantity: 'asc' },
+            },
           },
         });
         if (!psu) {
@@ -506,6 +509,7 @@ export class SalesService {
    * Important: on filtre directement les écarts ouverts (pas un échantillon
    * des N plus anciennes ventes, sinon les nouveaux écarts disparaissent
    * dès que l’historique dépasse cette fenêtre).
+   * `take` est un plafond de sécurité (5000), pas une limite d’affichage.
    *
    * Scope entreprise/département : lignes produit OU caisse (Register) —
    * les Remotes caissiers filtrent souvent par département ; sans le OR
@@ -513,8 +517,8 @@ export class SalesService {
    * On n’utilise pas Sale.clientName dans le SQL (colonne parfois absente
    * sur un nœud cloud non migré — ça faisait planter /sales/cash-gaps).
    */
-  async listCashGaps(opts: { companyId: number; departmentId?: number; take?: number }) {
-    const take = Math.min(100, Math.max(1, Math.floor(opts.take ?? 50)));
+  async listCashGaps(opts: { companyId: number; departmentId?: number; take?: number; q?: string }) {
+    const take = Math.min(5000, Math.max(1, Math.floor(opts.take ?? 5000)));
     // Register n’a PAS companyId : entreprise via Store (ou Department).
     const scopeClause =
       opts.departmentId != null
@@ -626,7 +630,28 @@ export class SalesService {
       };
     });
 
-    return { changeOwed, balanceOwed };
+    const q = (opts.q ?? '').trim().toLowerCase().replace(/^#/, '');
+    if (!q) return { changeOwed, balanceOwed };
+
+    const match = (row: (typeof changeOwed)[number] | (typeof balanceOwed)[number]) => {
+      const txn = String(row.txnNumber ?? row.id);
+      const name = (row.clientName ?? '').trim().toLowerCase();
+      const cashier = (row.cashier ?? '').trim().toLowerCase();
+      const amounts = [row.changeDue, row.balanceDue, row.total, row.amountReceived, row.amountPaid]
+        .map((n) => String(n))
+        .join(' ');
+      return (
+        txn.includes(q) ||
+        name.includes(q) ||
+        cashier.includes(q) ||
+        amounts.includes(q.replace(',', '.'))
+      );
+    };
+
+    return {
+      changeOwed: changeOwed.filter(match),
+      balanceOwed: balanceOwed.filter(match),
+    };
   }
 
   /** Best-effort : `Sale.clientName` peut être absente sur un nœud non migré. */
@@ -795,7 +820,10 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       await this.reverseDeliveredStockForSale(tx, id, userId, 'Annulation vente');
       await this.reverseBankDepositsForSale(tx, id);
-      await tx.financeEntry.deleteMany({ where: { saleId: id } });
+      await tx.financeEntry.updateMany({
+        where: { saleId: id, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
       const companyId = sale.items[0]?.product?.companyId;
       if (companyId != null) {
         await this.accountingPosting.voidBySource(companyId, 'SALE', String(id), tx);
@@ -829,7 +857,10 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       await this.reverseDeliveredStockForSale(tx, id, userId, 'Remboursement vente');
       await this.reverseBankDepositsForSale(tx, id);
-      await tx.financeEntry.deleteMany({ where: { saleId: id } });
+      await tx.financeEntry.updateMany({
+        where: { saleId: id, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
       const companyId = sale.items[0]?.product?.companyId;
       if (companyId != null) {
         await this.accountingPosting.voidBySource(companyId, 'SALE', String(id), tx);

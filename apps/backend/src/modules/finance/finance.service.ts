@@ -31,6 +31,8 @@ export type FinanceLedgerRow = {
   description: string;
   detail: string | null;
   user: { id: number; fullName: string | null; phone: string } | null;
+  /** Soft-delete : reste visible pour audit, exclu des totaux métier. */
+  voided?: boolean;
 };
 
 @Injectable()
@@ -169,7 +171,6 @@ export class FinanceService {
       if (wantExpense) types.push(FinanceType.EXPENSE);
       const entries = await this.prisma.financeEntry.findMany({
         where: {
-          deletedAt: null,
           type: { in: types },
           createdAt: { gte: from, lte: to },
           ...this.companyFinanceWhere(companyId),
@@ -179,6 +180,7 @@ export class FinanceService {
         },
       });
       for (const fe of entries) {
+        const voided = fe.deletedAt != null;
         if (fe.type === FinanceType.INCOME) {
           rows.push({
             kind: 'SALE',
@@ -188,6 +190,7 @@ export class FinanceService {
             description: fe.description,
             detail: fe.detail?.trim() || null,
             user: fe.user,
+            voided,
           });
         } else {
           rows.push({
@@ -198,6 +201,7 @@ export class FinanceService {
             description: fe.description,
             detail: fe.detail?.trim() || null,
             user: fe.user,
+            voided,
           });
         }
       }
@@ -270,9 +274,9 @@ export class FinanceService {
           {
             date: formatDateTimeFr(row.occurredAt),
             kind: kindFr(row.kind),
-            desc: row.detail
-              ? `${row.description} — ${row.detail}`
-              : row.description,
+            desc: `${row.voided ? '[Annulée] ' : ''}${
+              row.detail ? `${row.description} — ${row.detail}` : row.description
+            }`,
             user: row.user?.fullName?.trim() || row.user?.phone || '—',
             amount: formatMoneyHtg(row.amount),
           },

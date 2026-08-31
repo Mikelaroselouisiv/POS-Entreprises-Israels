@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   closeRegisterSession,
   collectSaleBalance,
@@ -47,6 +47,8 @@ import { formatQuantity } from '../utils/formatQuantity';
 const QTY_DECIMALS = 4;
 const MIN_SALE_QTY = 0.0001;
 const DEFAULT_PRODUCT_TILE_COLOR = '#f8fafc';
+const CASH_GAP_DISPLAY_LIMIT = 40;
+const CATALOG_REFRESH_MS = 45_000;
 
 function textColorForBackground(hex: string): string {
   const h = hex.replace('#', '');
@@ -482,7 +484,7 @@ export function PosPage() {
       const gaps = await listSaleCashGaps({
         companyId: cid,
         departmentId: effectiveDepartmentId,
-        take: 40,
+        q: cashGapQuery.trim() || undefined,
       });
       setCashGaps(gaps);
     } catch {
@@ -496,6 +498,38 @@ export function PosPage() {
     void refreshCashGaps();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveCompanyId, effectiveDepartmentId, salesEnabled]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void refreshCashGaps();
+    }, 280);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cashGapQuery]);
+
+  const reloadPosCatalog = useCallback(async () => {
+    if (!user) return;
+    try {
+      const deptId = typeof user.departmentId === 'number' ? user.departmentId : undefined;
+      setProducts(await loadProductsWithCache(isCashier ? deptId : undefined));
+    } catch {
+      // garder le catalogue affiché
+    }
+  }, [user, isCashier]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void reloadPosCatalog();
+    };
+    window.addEventListener('focus', onFocus);
+    const id = window.setInterval(() => {
+      void reloadPosCatalog();
+    }, CATALOG_REFRESH_MS);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(id);
+    };
+  }, [reloadPosCatalog]);
 
   useEffect(() => {
     const cid = effectiveCompanyId;
@@ -1526,10 +1560,14 @@ export function PosPage() {
             <section className="pos-cash-gap-list">
               <h3>
                 Monnaie à rendre
-                {cashGapQuery.trim() && cashGaps.changeOwed.length > 0 ? (
+                {cashGaps.changeOwed.length > 0 ? (
                   <span className="pos-cash-gap-count">
                     {' '}
-                    ({filteredCashGaps.changeOwed.length}/{cashGaps.changeOwed.length})
+                    (
+                    {cashGapQuery.trim()
+                      ? `${filteredCashGaps.changeOwed.length}/${cashGaps.changeOwed.length}`
+                      : `${Math.min(CASH_GAP_DISPLAY_LIMIT, filteredCashGaps.changeOwed.length)}/${cashGaps.changeOwed.length}`}
+                    )
                   </span>
                 ) : null}
               </h3>
@@ -1539,7 +1577,10 @@ export function PosPage() {
                 <p className="dept-hint">Aucun résultat</p>
               ) : (
                 <ul>
-                  {filteredCashGaps.changeOwed.map((row) => (
+                  {(cashGapQuery.trim()
+                    ? filteredCashGaps.changeOwed
+                    : filteredCashGaps.changeOwed.slice(0, CASH_GAP_DISPLAY_LIMIT)
+                  ).map((row) => (
                     <li key={`c-${row.id}`}>
                       <div>
                         <strong>#{row.txnNumber ?? row.id}</strong>{' '}
@@ -1562,10 +1603,14 @@ export function PosPage() {
             <section className="pos-cash-gap-list">
               <h3>
                 Restes à encaisser
-                {cashGapQuery.trim() && cashGaps.balanceOwed.length > 0 ? (
+                {cashGaps.balanceOwed.length > 0 ? (
                   <span className="pos-cash-gap-count">
                     {' '}
-                    ({filteredCashGaps.balanceOwed.length}/{cashGaps.balanceOwed.length})
+                    (
+                    {cashGapQuery.trim()
+                      ? `${filteredCashGaps.balanceOwed.length}/${cashGaps.balanceOwed.length}`
+                      : `${Math.min(CASH_GAP_DISPLAY_LIMIT, filteredCashGaps.balanceOwed.length)}/${cashGaps.balanceOwed.length}`}
+                    )
                   </span>
                 ) : null}
               </h3>
@@ -1575,7 +1620,10 @@ export function PosPage() {
                 <p className="dept-hint">Aucun résultat</p>
               ) : (
                 <ul>
-                  {filteredCashGaps.balanceOwed.map((row) => (
+                  {(cashGapQuery.trim()
+                    ? filteredCashGaps.balanceOwed
+                    : filteredCashGaps.balanceOwed.slice(0, CASH_GAP_DISPLAY_LIMIT)
+                  ).map((row) => (
                     <li key={`b-${row.id}`}>
                       <div>
                         <strong>#{row.txnNumber ?? row.id}</strong>{' '}

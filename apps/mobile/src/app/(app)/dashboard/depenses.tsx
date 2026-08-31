@@ -288,9 +288,11 @@ export default function DepensesScreen() {
           ledger.map((row) => {
             const parts = expenseParts(row);
             return (
-            <View key={row.id} style={styles.row}>
+            <View key={row.id} style={[styles.row, row.voided && styles.rowVoided]}>
               <View style={styles.rowInfo}>
-                <Text style={styles.rowTitle} numberOfLines={1}>
+                <Text
+                  style={[styles.rowTitle, row.voided && styles.voidedText]}
+                  numberOfLines={1}>
                   {parts.label}
                 </Text>
                 {parts.detail ? (
@@ -304,8 +306,11 @@ export default function DepensesScreen() {
                 </Text>
               </View>
               <View style={styles.rowAside}>
-                <MoneyText value={row.amount} style={styles.rowValue} />
-                {isAdmin ? (
+                <MoneyText
+                  value={row.amount}
+                  style={[styles.rowValue, row.voided && styles.voidedText]}
+                />
+                {isAdmin && !row.voided ? (
                   <Pressable
                     disabled={deletingId === row.id}
                     onPress={() => confirmDelete(row)}
@@ -394,6 +399,8 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.border,
     padding: Spacing.three,
   },
+  rowVoided: { borderColor: '#fecaca', backgroundColor: '#fef2f2' },
+  voidedText: { color: '#b91c1c', textDecorationLine: 'line-through' },
   rowInfo: { flex: 1, gap: 2 },
   rowTitle: { fontWeight: '600', color: BrandColors.text },
   rowDetail: { fontSize: 13, lineHeight: 18, color: BrandColors.text },

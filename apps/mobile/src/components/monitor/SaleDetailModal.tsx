@@ -42,7 +42,14 @@ export function SaleDetailModal({
   onDelete,
   onClose,
 }: Props) {
-  const completed = sale?.status === 'COMPLETED';
+  const completed = sale?.status === 'COMPLETED' && !sale.deletedAt;
+  const saleVoided =
+    Boolean(sale?.deletedAt) || sale?.status === 'CANCELLED' || sale?.status === 'REFUNDED';
+  const statusLabel = sale
+    ? sale.deletedAt
+      ? 'Supprimée'
+      : STATUS_LABEL[sale.status]
+    : '';
 
   return (
     <ModalShell
@@ -57,14 +64,19 @@ export function SaleDetailModal({
                 label="Caissier"
                 value={sale.user?.fullName?.trim() || sale.cashier || sale.user?.phone || '—'}
               />
-              <InfoLine label="Statut" value={STATUS_LABEL[sale.status]} />
+              <InfoLine label="Statut" value={statusLabel} />
             </View>
 
             <Text style={styles.sectionTitle}>Articles</Text>
             {(sale.items ?? []).map((item, index) => (
               <View key={`${item.product?.id ?? 'line'}-${index}`} style={styles.itemRow}>
                 <View style={styles.itemInfo}>
-                  <Text style={styles.itemName} numberOfLines={2}>
+                  <Text
+                    style={[
+                      styles.itemName,
+                      (saleVoided || item.deletedAt) && styles.voidedText,
+                    ]}
+                    numberOfLines={2}>
                     {item.lineLabel || item.product?.name || 'Article'}
                   </Text>
                   <Text style={styles.itemMeta}>
@@ -114,7 +126,7 @@ export function SaleDetailModal({
                 </Pressable>
               </View>
             ) : null}
-            {canDelete ? (
+            {canDelete && !saleVoided ? (
               <Pressable
                 disabled={busy}
                 style={[styles.deleteButton, busy && styles.disabled]}
@@ -192,6 +204,7 @@ const styles = StyleSheet.create({
   },
   itemInfo: { flex: 1, gap: 3 },
   itemName: { color: BrandColors.text, fontWeight: '700', fontSize: 13 },
+  voidedText: { color: '#b91c1c', textDecorationLine: 'line-through' },
   itemMeta: { color: BrandColors.textMuted, fontSize: 11 },
   inlineMoney: { color: BrandColors.textMuted, fontSize: 11 },
   itemTotal: { color: BrandColors.text, fontWeight: '800' },

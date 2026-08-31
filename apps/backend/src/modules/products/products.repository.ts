@@ -15,7 +15,10 @@ const productInclude = {
   saleUnits: {
     include: {
       packagingUnit: true,
-      volumePrices: { orderBy: { minQuantity: 'asc' as const } },
+      volumePrices: {
+        where: { deletedAt: null },
+        orderBy: { minQuantity: 'asc' as const },
+      },
     },
   },
   company: { select: { id: true, name: true, currency: true } },

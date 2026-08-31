@@ -280,7 +280,10 @@ export class CreditService {
               },
             },
             packagingUnit: true,
-            volumePrices: { orderBy: { minQuantity: 'asc' } },
+            volumePrices: {
+              where: { deletedAt: null },
+              orderBy: { minQuantity: 'asc' },
+            },
           },
         });
         if (!psu) throw new NotFoundException(`Unité de vente ${item.productSaleUnitId} introuvable`);

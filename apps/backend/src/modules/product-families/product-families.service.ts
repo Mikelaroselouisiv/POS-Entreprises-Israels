@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { pickTierByMinQty } from '../../common/prisma/replace-min-qty-tiers';
 import { AuditService } from '../audit/audit.service';
 import {
   CreateProductFamilyDto,
@@ -53,6 +54,56 @@ export class ProductFamiliesService {
       }
       seen.add(key);
     }
+  }
+
+  /** Soft-delete + upsert par minQuantity pour que le sync-agent propage les tombstones. */
+  private async replaceFamilyTiers(
+    tx: Prisma.TransactionClient,
+    productFamilyId: number,
+    tiers: ProductFamilyTierDto[],
+  ) {
+    const existing = await tx.productFamilyTier.findMany({ where: { productFamilyId } });
+    const { byMin, duplicateIds } = pickTierByMinQty(existing);
+    const keepMins = new Set<number>();
+    const now = new Date();
+
+    for (let idx = 0; idx < tiers.length; idx++) {
+      const t = tiers[idx];
+      const min = Number(t.minQuantity);
+      keepMins.add(min);
+      const prev = byMin.get(min);
+      if (prev) {
+        await tx.productFamilyTier.update({
+          where: { id: prev.id },
+          data: { unitPrice: t.unitPrice, sortOrder: idx, deletedAt: null },
+        });
+      } else {
+        await tx.productFamilyTier.create({
+          data: {
+            productFamilyId,
+            minQuantity: t.minQuantity,
+            unitPrice: t.unitPrice,
+            sortOrder: idx,
+          },
+        });
+      }
+    }
+
+    const staleIds = [
+      ...duplicateIds,
+      ...existing.filter((r) => !keepMins.has(Number(r.minQuantity)) && !r.deletedAt).map((r) => r.id),
+    ];
+    if (staleIds.length) {
+      await tx.productFamilyTier.updateMany({
+        where: { id: { in: staleIds } },
+        data: { deletedAt: now },
+      });
+    }
+
+    await tx.productFamily.update({
+      where: { id: productFamilyId },
+      data: { updatedAt: now },
+    });
   }
 
   private async ensureCompany(companyId: number) {
@@ -163,15 +214,7 @@ export class ProductFamiliesService {
       }
 
       if (dto.tiers !== undefined) {
-        await tx.productFamilyTier.deleteMany({ where: { productFamilyId: id } });
-        await tx.productFamilyTier.createMany({
-          data: dto.tiers.map((t, idx) => ({
-            productFamilyId: id,
-            minQuantity: t.minQuantity,
-            unitPrice: t.unitPrice,
-            sortOrder: idx,
-          })),
-        });
+        await this.replaceFamilyTiers(tx, id, dto.tiers);
       }
 
       if (productIds !== undefined) {
@@ -210,13 +253,18 @@ export class ProductFamiliesService {
     if (!existing) throw new NotFoundException('Famille de produits introuvable');
 
     await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
       await tx.product.updateMany({
         where: { productFamilyId: id },
         data: { productFamilyId: null },
       });
+      await tx.productFamilyTier.updateMany({
+        where: { productFamilyId: id, deletedAt: null },
+        data: { deletedAt: now },
+      });
       await tx.productFamily.update({
         where: { id },
-        data: { deletedAt: new Date() },
+        data: { deletedAt: now },
       });
     });
 

@@ -56,9 +56,7 @@ export class SalesRepository {
     };
 
     const where: Prisma.SaleWhereInput = {
-      deletedAt: null,
-      status: 'COMPLETED',
-      items: { some: { product: productWhere, deletedAt: null } },
+      items: { some: { product: productWhere } },
       ...(createdAt ? { createdAt } : {}),
     };
 
@@ -76,7 +74,7 @@ export class SalesRepository {
 
   findOne(id: number) {
     return this.prisma.sale.findFirst({
-      where: { id, deletedAt: null },
+      where: { id },
       include: saleInclude,
     });
   }

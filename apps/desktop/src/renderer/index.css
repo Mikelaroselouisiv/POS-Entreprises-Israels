@@ -589,6 +589,21 @@ select {
   align-items: center;
 }
 
+.journal-row--voided,
+.journal-row--voided .journal-amt,
+.journal-row--voided .dept-hint {
+  color: #b91c1c;
+  text-decoration: line-through;
+}
+
+.data-table .dashboard-sale-row--voided,
+.data-table .dashboard-sale-row--voided td,
+.data-table tr.sale-line--voided,
+.data-table tr.sale-line--voided td {
+  color: #b91c1c;
+  text-decoration: line-through;
+}
+
 .journal-delete-btn {
   color: #b91c1c;
   white-space: nowrap;
@@ -707,6 +722,10 @@ select {
 
 .data-table .dashboard-sale-row:hover {
   background: rgba(15, 23, 42, 0.06);
+}
+
+.data-table .dashboard-sale-row--voided:hover {
+  background: #fef2f2;
 }
 
 /* Configuration — départements (unités autonomes, liste produits) */

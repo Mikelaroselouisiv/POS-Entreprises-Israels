@@ -603,12 +603,14 @@ export async function listSaleCashGaps(params: {
   companyId: number;
   departmentId?: number;
   take?: number;
+  q?: string;
 }): Promise<SaleCashGaps> {
   const { data } = await api.get<SaleCashGaps>('/sales/cash-gaps', {
     params: {
       companyId: params.companyId,
       departmentId: params.departmentId,
-      take: params.take ?? 40,
+      take: params.take,
+      q: params.q,
     },
   });
   return data;

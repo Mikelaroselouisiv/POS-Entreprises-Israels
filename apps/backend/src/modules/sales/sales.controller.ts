@@ -41,6 +41,7 @@ export class SalesController {
     @Query('companyId') companyIdRaw?: string,
     @Query('departmentId') departmentIdRaw?: string,
     @Query('take') takeRaw?: string,
+    @Query('q') qRaw?: string,
   ) {
     const companyId = companyIdRaw ? Number.parseInt(companyIdRaw, 10) : NaN;
     if (!Number.isFinite(companyId) || companyId <= 0) {
@@ -53,6 +54,7 @@ export class SalesController {
       departmentId:
         Number.isFinite(departmentIdN) && departmentIdN > 0 ? departmentIdN : undefined,
       take: takeN,
+      q: qRaw?.trim() || undefined,
     });
   }
 

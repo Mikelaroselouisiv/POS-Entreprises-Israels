@@ -276,6 +276,7 @@ export interface Sale {
   subtotal?: number | string;
   tax?: number | string;
   status: 'COMPLETED' | 'CANCELLED' | 'REFUNDED';
+  deletedAt?: string | null;
   createdAt: string;
   clientName?: string | null;
   cashier?: string | null;
@@ -298,6 +299,7 @@ export interface Sale {
     quantity: string | number;
     unitPrice: string | number;
     subtotal: string | number;
+    deletedAt?: string | null;
     product?: {
       id: number;
       name: string;
@@ -359,6 +361,7 @@ export interface FinanceLedgerRow {
   description: string;
   detail?: string | null;
   user: { id: number; fullName: string | null; phone: string } | null;
+  voided?: boolean;
 }
 
 export interface StockMovementRow {

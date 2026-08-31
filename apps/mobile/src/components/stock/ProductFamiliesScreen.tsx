@@ -25,6 +25,7 @@ import {
   getProducts,
   updateProductFamily,
 } from '@/services/api';
+import { writeCatalogCaches } from '@/services/product-cache';
 import type { CompanyListItem, Product, ProductFamily } from '@/types/api';
 import { formatMoney } from '@/utils/datetime';
 
@@ -165,6 +166,7 @@ export function ProductFamiliesScreen() {
       ]);
       setFamilies(familyRows);
       setProducts(productRows);
+      void writeCatalogCaches(productRows);
     } catch {
       setStatus('Enregistrement impossible');
     } finally {
@@ -186,7 +188,15 @@ export function ProductFamiliesScreen() {
               try {
                 await deleteProductFamily(family.id);
                 setStatus('Famille supprimée');
-                if (companyId != null) setFamilies(await getProductFamilies(companyId));
+                if (companyId != null) {
+                  const [familyRows, productRows] = await Promise.all([
+                    getProductFamilies(companyId),
+                    getProducts(),
+                  ]);
+                  setFamilies(familyRows);
+                  setProducts(productRows);
+                  void writeCatalogCaches(productRows);
+                }
               } catch {
                 setStatus('Suppression impossible');
               }

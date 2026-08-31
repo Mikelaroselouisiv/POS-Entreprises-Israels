@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { pickTierByMinQty } from '../../common/prisma/replace-min-qty-tiers';
 import { ProductsRepository } from './products.repository';
 
 @Injectable()
@@ -55,6 +56,51 @@ export class ProductsService {
         throw new BadRequestException('Paliers : quantité minimale en double.');
       }
       seen.add(key);
+    }
+  }
+
+  /** Soft-delete + upsert par minQuantity : les tombstones se répliquent, pas de doublons sync. */
+  private async replaceVolumePrices(
+    tx: Prisma.TransactionClient,
+    productSaleUnitId: number,
+    volumePrices: Array<{ minQuantity: number; unitPrice: number }>,
+  ) {
+    const existing = await tx.productVolumePrice.findMany({ where: { productSaleUnitId } });
+    const { byMin, duplicateIds } = pickTierByMinQty(existing);
+    const keepMins = new Set<number>();
+    const now = new Date();
+
+    for (let idx = 0; idx < volumePrices.length; idx++) {
+      const vp = volumePrices[idx];
+      const min = Number(vp.minQuantity);
+      keepMins.add(min);
+      const prev = byMin.get(min);
+      if (prev) {
+        await tx.productVolumePrice.update({
+          where: { id: prev.id },
+          data: { unitPrice: vp.unitPrice, sortOrder: idx, deletedAt: null },
+        });
+      } else {
+        await tx.productVolumePrice.create({
+          data: {
+            productSaleUnitId,
+            minQuantity: vp.minQuantity,
+            unitPrice: vp.unitPrice,
+            sortOrder: idx,
+          },
+        });
+      }
+    }
+
+    const staleIds = [
+      ...duplicateIds,
+      ...existing.filter((r) => !keepMins.has(Number(r.minQuantity)) && !r.deletedAt).map((r) => r.id),
+    ];
+    if (staleIds.length) {
+      await tx.productVolumePrice.updateMany({
+        where: { id: { in: staleIds } },
+        data: { deletedAt: now },
+      });
     }
   }
 
@@ -184,7 +230,10 @@ export class ProductsService {
           saleUnits: {
             include: {
               packagingUnit: true,
-              volumePrices: { orderBy: { minQuantity: 'asc' } },
+              volumePrices: {
+                where: { deletedAt: null },
+                orderBy: { minQuantity: 'asc' },
+              },
             },
           },
           company: { select: { id: true, name: true, currency: true } },
@@ -282,17 +331,7 @@ export class ProductsService {
             });
           }
           if (volumePrices !== undefined) {
-            await tx.productVolumePrice.deleteMany({ where: { productSaleUnitId: su.id } });
-            if (volumePrices.length) {
-              await tx.productVolumePrice.createMany({
-                data: volumePrices.map((vp, idx) => ({
-                  productSaleUnitId: su.id,
-                  minQuantity: vp.minQuantity,
-                  unitPrice: vp.unitPrice,
-                  sortOrder: idx,
-                })),
-              });
-            }
+            await this.replaceVolumePrices(tx, su.id, volumePrices);
           }
         }
       }
@@ -349,7 +388,10 @@ export class ProductsService {
           saleUnits: {
             include: {
               packagingUnit: true,
-              volumePrices: { orderBy: { minQuantity: 'asc' } },
+              volumePrices: {
+                where: { deletedAt: null },
+                orderBy: { minQuantity: 'asc' },
+              },
             },
           },
           company: { select: { id: true, name: true, currency: true } },

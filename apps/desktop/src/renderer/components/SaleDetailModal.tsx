@@ -7,6 +7,7 @@ import { formatMoney } from '../utils/currency';
 import { formatQuantity } from '../utils/formatQuantity';
 import { buildSaleDetailPrintHtml, openBrowserPrintWindow } from '../utils/saleReceiptBrowserHtml';
 import { buildReceiptPayloadFromSale } from '../utils/receiptPayload';
+import { isSaleVoided, saleStatusAuditLabel } from '../utils/saleAudit';
 import { saleTxnNumber } from '../utils/saleTxnNumber';
 
 function formatApiError(err: unknown, fallback: string): string {
@@ -46,19 +47,6 @@ function paymentMethodLabel(method: string): string {
   }
 }
 
-function saleStatusLabel(status: Sale['status']): string {
-  switch (status) {
-    case 'COMPLETED':
-      return 'Complétée';
-    case 'CANCELLED':
-      return 'Annulée';
-    case 'REFUNDED':
-      return 'Remboursée';
-    default:
-      return status;
-  }
-}
-
 export function SaleDetailModal({
   sale,
   companyName,
@@ -87,8 +75,12 @@ export function SaleDetailModal({
 
   const hasElectronPrint = typeof window.desktopApp?.printReceipt === 'function';
   const busy = receiptBusy || actionBusy;
+  const saleVoided = isSaleVoided(sale);
   const showFinanceActions =
-    canCancelOrRefund && sale.status === 'COMPLETED' && (onCancelSale || onRefundSale);
+    canCancelOrRefund &&
+    !saleVoided &&
+    sale.status === 'COMPLETED' &&
+    (onCancelSale || onRefundSale);
 
   async function printThermalReceipt() {
     if (!sale) return;
@@ -163,7 +155,7 @@ export function SaleDetailModal({
             {sale.user?.fullName?.trim() || sale.cashier || sale.user?.phone || '—'}
           </p>
           <p style={{ margin: 0 }}>
-            <strong>Statut</strong> : {saleStatusLabel(sale.status)}
+            <strong>Statut</strong> : {saleStatusAuditLabel(sale)}
           </p>
         </div>
 
@@ -179,7 +171,10 @@ export function SaleDetailModal({
             </thead>
             <tbody>
               {(sale.items ?? []).map((it, idx) => (
-                <tr key={idx}>
+                <tr
+                  key={idx}
+                  className={saleVoided || it.deletedAt ? 'sale-line--voided' : undefined}
+                >
                   <td>{it.lineLabel ?? it.product?.name ?? '—'}</td>
                   <td>{formatQuantity(Number(it.quantity))}</td>
                   <td className="journal-amt">{formatMoney(it.unitPrice)}</td>
